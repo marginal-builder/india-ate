@@ -1,9 +1,15 @@
 # india-ate
 
+[![CI](https://github.com/marginal-builder/india-ate/actions/workflows/ci.yml/badge.svg)](https://github.com/marginal-builder/india-ate/actions/workflows/ci.yml)
+[![Deploy](https://github.com/marginal-builder/india-ate/actions/workflows/pages.yml/badge.svg)](https://github.com/marginal-builder/india-ate/actions/workflows/pages.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 **An open-source Food & Nutrition Premises Entity Graph for India.** Decode
 14-digit FSSAI identifiers deterministically, ingest authoritative public
 records, resolve ghost-brand clusters, and generate source-backed Fact
 Receipts.
+
+**Live demo:** <https://marginal-builder.github.io/india-ate/>
 
 > **Demo data notice**
 > The static web demo in `web/` is built from **synthetic fixtures**. Its
@@ -34,7 +40,7 @@ Requirements: Python 3.12+, [uv](https://docs.astral.sh/uv/), and Node 20+ for
 the web demo.
 
 ```bash
-git clone https://github.com/your-org/india-ate.git
+git clone https://github.com/marginal-builder/india-ate.git
 cd india-ate
 uv sync --extra dev
 uv run india-ate decode 10013022000417

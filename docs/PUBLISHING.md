@@ -1,6 +1,9 @@
 # Publishing to GitHub
 
-The repository is ready to push. This page covers the one-time GitHub setup.
+The upstream repository is
+[`marginal-builder/india-ate`](https://github.com/marginal-builder/india-ate) and
+the demo is at <https://marginal-builder.github.io/india-ate/>. This page covers
+the one-time GitHub setup for the upstream repository or a fork.
 
 ## 1. Create the repository
 
