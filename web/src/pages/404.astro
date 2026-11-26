@@ -1,0 +1,19 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { withBase } from "../lib/base";
+---
+
+<BaseLayout
+  title="Page not found | india-ate"
+  description="The requested india-ate demo page does not exist."
+  noindex
+>
+  <section class="card">
+    <h1 style="margin:0;font-size:1.45rem;">Page not found</h1>
+    <p style="color:var(--text-muted);">
+      This demo page does not exist. Return to the Fact Receipt lookup or browse
+      the illustrative directory.
+    </p>
+    <a class="btn" href={withBase("/")}>Back to the lookup</a>
+  </section>
+</BaseLayout>

@@ -1,0 +1,227 @@
+---
+import {
+  SEED_DARK_STORES,
+  getAllLicenseIds,
+  getAllPincodes,
+} from "../data/seed";
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { withBase } from "../lib/base";
+import { GRIEVANCE_CATEGORIES } from "../lib/grievance";
+
+const licenseIds = getAllLicenseIds();
+const pincodes = getAllPincodes();
+const apiBase = import.meta.env.PUBLIC_API_BASE ?? "http://127.0.0.1:8000";
+---
+
+<BaseLayout title="india-ate — FSSAI Fact Receipt Demo & Before-I-Order X-Ray">
+  <section class="card">
+    <div class="card-header">
+      <div>
+        <h1 style="margin:0;font-size:1.45rem;">
+          Before I Order: FSSAI Fact Receipt Lookup
+        </h1>
+        <p style="margin:0.25rem 0 0;color:var(--text-muted);">
+          Paste any 14-digit FSSAI ID to decode it deterministically offline.
+          When <span class="mono">india-ate serve</span> is running, the receipt
+          and nearby lookups use the live SQLite store. The hosted showcase falls
+          back to the synthetic demo fixtures and is labelled accordingly.
+        </p>
+      </div>
+      <span id="api-status-badge" class="badge">Checking local API…</span>
+    </div>
+
+    <form id="lookup-form">
+      <div class="form-row">
+        <div class="form-field">
+          <label for="fssai-input">14-Digit FSSAI License / Registration ID</label>
+          <input
+            id="fssai-input"
+            type="text"
+            inputmode="numeric"
+            maxlength="24"
+            placeholder="e.g. 21226001000412"
+            class="mono"
+            required
+          />
+        </div>
+        <div class="form-field">
+          <label for="api-base-url">Live API Base URL (optional)</label>
+          <input
+            id="api-base-url"
+            type="url"
+            value={apiBase}
+            class="mono"
+          />
+        </div>
+      </div>
+
+      <div style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;">
+        <button type="submit">Generate Fact Receipt</button>
+        <span style="font-size:0.82rem;color:var(--text-muted);">
+          Demo samples:
+        </span>
+        <button type="button" class="secondary" data-sample-fssai="21226001000412">
+          21226001000412 (demo cluster)
+        </button>
+        <button type="button" class="secondary" data-sample-fssai="11224302001190">
+          11224302001190 (demo dark store)
+        </button>
+        <button type="button" class="secondary" data-sample-fssai="13624001000999">
+          13624001000999 (demo hygiene)
+        </button>
+      </div>
+    </form>
+
+    <p id="lookup-error" class="notice hidden" role="alert"></p>
+    <div id="receipt-output" class="hidden" style="margin-top:1.25rem;"></div>
+  </section>
+
+  <section class="card">
+    <div class="card-header">
+      <h2 style="margin:0;font-size:1.15rem;">
+        Nearby Switch (Pin-Code Lookup)
+      </h2>
+    </div>
+    <form id="nearby-form" class="form-row" style="align-items:flex-end;">
+      <div class="form-field">
+        <label for="pin-input">6-Digit Postal Pin Code</label>
+        <input
+          id="pin-input"
+          type="text"
+          inputmode="numeric"
+          maxlength="12"
+          placeholder="e.g. 560034"
+          class="mono"
+          required
+        />
+      </div>
+      <div>
+        <button type="submit">Find Nearby Options</button>
+      </div>
+    </form>
+    <div id="nearby-output" class="hidden"></div>
+  </section>
+
+  <section id="grievance" class="card">
+    <div class="card-header">
+      <h2 style="margin:0;font-size:1.15rem;">
+        1-Tap Food Safety Connect Grievance Packet
+      </h2>
+      <span class="badge">15-Day State Escalation Tracker</span>
+    </div>
+    <form id="grievance-form">
+      <div class="form-row">
+        <div class="form-field">
+          <label for="g-fssai">14-Digit FSSAI ID</label>
+          <input
+            id="g-fssai"
+            type="text"
+            inputmode="numeric"
+            maxlength="24"
+            placeholder="21226001000412"
+            class="mono"
+            required
+          />
+        </div>
+        <div class="form-field">
+          <label for="g-category">Issue Category</label>
+          <select id="g-category" required>
+            {
+              GRIEVANCE_CATEGORIES.map((cat) => (
+                <option value={cat.value}>{cat.label}</option>
+              ))
+            }
+          </select>
+        </div>
+        <div class="form-field">
+          <label for="g-date">Incident Date</label>
+          <input id="g-date" type="date" required />
+        </div>
+        <div class="form-field">
+          <label for="g-order">Order / Invoice Reference (optional)</label>
+          <input id="g-order" type="text" placeholder="e.g. SWIGGY-99812" />
+        </div>
+      </div>
+
+      <div class="form-field" style="margin-bottom:0.75rem;">
+        <label for="g-desc">Factual Incident Description</label>
+        <textarea
+          id="g-desc"
+          rows="3"
+          placeholder="Describe batch/expiry, packaging, or hygiene observation factually..."
+          required
+        ></textarea>
+      </div>
+
+      <div style="display:flex;flex-wrap:wrap;gap:1rem;align-items:center;">
+        <button type="submit">Build Grievance Packet</button>
+        <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.88rem;">
+          <input id="g-persist" type="checkbox" />
+          Persist to local API (server must enable
+          <span class="mono">--allow-grievance-persist</span>)
+        </label>
+      </div>
+    </form>
+    <p id="grievance-error" class="notice hidden" role="alert"></p>
+    <div id="grievance-output" class="hidden" style="margin-top:1.25rem;"></div>
+  </section>
+
+  <section class="card">
+    <div class="card-header">
+      <h2 style="margin:0;font-size:1.15rem;">
+        Demo Fact Pages Directory
+      </h2>
+    </div>
+    <div class="grid-2">
+      <div>
+        <h3 style="margin:0 0 0.4rem;font-size:0.95rem;">
+          Illustrative License Pages (
+          <span class="mono">/in/license/{"{id}"}</span>)
+        </h3>
+        <ul style="margin:0;padding-left:1.2rem;">
+          {
+            licenseIds.map((id) => (
+              <li class="mono">
+                <a href={withBase(`/in/license/${id}`)}>{id}</a>
+              </li>
+            ))
+          }
+        </ul>
+      </div>
+      <div>
+        <h3 style="margin:0 0 0.4rem;font-size:0.95rem;">
+          Pin-Code Atlas (<span class="mono">/in/pincode/{"{pin}"}</span>)
+        </h3>
+        <ul style="margin:0;padding-left:1.2rem;">
+          {
+            pincodes.map((pin) => (
+              <li class="mono">
+                <a href={withBase(`/in/pincode/${pin}`)}>{pin}</a>
+              </li>
+            ))
+          }
+        </ul>
+        <h3 style="margin:1rem 0 0.4rem;font-size:0.95rem;">
+          Demo Dark-Store X-Ray (
+          <span class="mono">/in/dark-store/{"{slug}"}</span>)
+        </h3>
+        <ul style="margin:0;padding-left:1.2rem;">
+          {
+            SEED_DARK_STORES.map((ds) => (
+              <li>
+                <a href={withBase(`/in/dark-store/${ds.slug}`)}>
+                  {ds.storefront_label}
+                </a>
+              </li>
+            ))
+          }
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <script>
+    import { initConsumerUi } from "../scripts/consumer-ui";
+    initConsumerUi();
+  </script>
+</BaseLayout>

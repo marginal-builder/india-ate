@@ -1,0 +1,98 @@
+---
+import "../styles/global.css";
+import { withBase } from "../lib/base";
+
+interface Props {
+  title: string;
+  description?: string;
+  noindex?: boolean;
+}
+
+const {
+  title,
+  description = "Illustrative FSSAI Fact Receipts, Ghost-Brand Cluster records, Pin-Code Atlas, and Food Safety Connect escalation.",
+  noindex = false,
+} = Astro.props;
+const canonical = Astro.site
+  ? new URL(Astro.url.pathname, Astro.site).href
+  : Astro.url.href;
+const repoUrl = import.meta.env.PUBLIC_REPO_URL;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    {noindex && <meta name="robots" content="noindex, nofollow" />}
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" type="image/svg+xml" href={withBase("/favicon.svg")} />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta name="twitter:card" content="summary" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <div class="container site-header-inner">
+        <a class="brand" href={withBase("/")}>
+          <span>india-ate</span>
+          <span class="badge">Synthetic Demo</span>
+        </a>
+        <nav class="nav-links" aria-label="Primary navigation">
+          <a href={withBase("/")}>Fact Receipt Lookup</a>
+          <a href={withBase("/in/pincode/560034")}>Pin-Code Atlas</a>
+          <a href={withBase("/in/dark-store/demo-dark-store-koramangala-560034")}>
+            Dark Stores
+          </a>
+          <a href={withBase("/#grievance")}>Food Safety Connect</a>
+          {
+            repoUrl && (
+              <a href={repoUrl} rel="noopener noreferrer">
+                Source
+              </a>
+            )
+          }
+        </nav>
+      </div>
+    </header>
+
+    <div class="demo-banner" role="note">
+      <div class="container">
+        <strong>Synthetic demo data.</strong> The static showcase uses
+        illustrative premises, records, and placeholder hashes. It is not an
+        official FSSAI/FoSCoS dataset and must not be used for regulatory or
+        purchasing decisions. Run the API with your own ingested records for
+        production use.
+      </div>
+    </div>
+
+    <main id="main" class="container">
+      <slot />
+    </main>
+
+    <footer class="site-footer">
+      <div class="container">
+        <p>
+          <strong>Epistemic &amp; Legal Guardrail:</strong> Demo records are
+          synthetic. Production Fact Receipts are generated only from ingested
+          public records with clickable sources and content hashes. No subjective
+          scores, grades, or editorial opinions are published.
+        </p>
+        {
+          repoUrl && (
+            <p>
+              <a href={repoUrl} rel="noopener noreferrer">
+                Source code and data policy
+              </a>
+            </p>
+          )
+        }
+      </div>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,51 @@
+---
+import FactReceiptCard from "../../../components/FactReceiptCard.astro";
+import {
+  SEED_DARK_STORES,
+  getDarkStoreBySlug,
+  getFactReceiptFromSeed,
+} from "../../../data/seed";
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import { withBase } from "../../../lib/base";
+
+export function getStaticPaths() {
+  return SEED_DARK_STORES.map((ds) => ({
+    params: { slug: ds.slug },
+  }));
+}
+
+const { slug } = Astro.params;
+const darkStore = getDarkStoreBySlug(slug);
+if (!darkStore) {
+  throw new Error(`Unknown dark-store slug: ${slug}`);
+}
+const receipt = getFactReceiptFromSeed(darkStore.fssai_id);
+---
+
+<BaseLayout
+  title={`${darkStore.storefront_label} — Illustrative Dark-Store X-Ray | india-ate`}
+  description={`Synthetic demo Fact Receipt for quick-commerce dark store ${darkStore.storefront_label} (FSSAI ${darkStore.fssai_id}). Not an official FSSAI/FoSCoS record.`}
+  noindex
+>
+  <section class="card">
+    <div class="card-header">
+      <div>
+        <span class="badge mono">{darkStore.platform}</span>
+        <h1 style="margin:0.4rem 0 0;font-size:1.35rem;">
+          Demo Dark-Store X-Ray: {darkStore.storefront_label}
+        </h1>
+      </div>
+      <a href={withBase(`/in/license/${darkStore.fssai_id}`)}>
+        Illustrative License Page →
+      </a>
+    </div>
+    <p style="margin:0;color:var(--text-muted);">
+      This synthetic demo shows how quick-commerce dark-store FSSAI identifiers
+      can be mapped to a premises record. Below is an illustrative Fact Receipt
+      for <span class="mono">{darkStore.fssai_id}</span>; it is not an official
+      record.
+    </p>
+  </section>
+
+  <FactReceiptCard receipt={receipt} heading={darkStore.storefront_label} />
+</BaseLayout>

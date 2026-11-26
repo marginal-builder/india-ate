@@ -1,0 +1,140 @@
+---
+import {
+  getAllPincodes,
+  getPremisesByPincodeFromSeed,
+  getVerifiedNearbyFromSeed,
+} from "../../../data/seed";
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import { withBase } from "../../../lib/base";
+
+export function getStaticPaths() {
+  return getAllPincodes().map((pin) => ({
+    params: { pin },
+  }));
+}
+
+const { pin } = Astro.params;
+const receipts = getPremisesByPincodeFromSeed(pin);
+const verifiedSwitches = getVerifiedNearbyFromSeed(pin);
+---
+
+<BaseLayout
+  title={`Pin Code ${pin} — Illustrative Food Safety Atlas | india-ate`}
+  description={`Synthetic demo Fact Receipts, ghost-brand clusters, dark stores, and nearby options in pin code ${pin}. Not an official FSSAI/FoSCoS record.`}
+  noindex
+>
+  <section class="card">
+    <div class="card-header">
+      <h1 style="margin:0;font-size:1.35rem;">
+        Pin-Code Atlas: <span class="mono">{pin}</span>
+      </h1>
+      <span class="badge">{receipts.length} recorded premises</span>
+    </div>
+    <p style="margin:0;color:var(--text-muted);">
+      All physical food premises, multi-brand cloud kitchen clusters, and
+      quick-commerce dark stores mapped to postal code{" "}
+      <span class="mono">{pin}</span>.
+    </p>
+  </section>
+
+  <section class="card">
+    <div class="card-header">
+      <h2 style="margin:0;font-size:1.1rem;">
+        Observed Premises &amp; Ghost-Brand Clusters
+      </h2>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>FSSAI ID</th>
+            <th>Illustrative Name</th>
+            <th>Type</th>
+            <th>License Tier</th>
+            <th>Ghost-Brand Count</th>
+            <th>Latest Demo Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {
+            receipts.map((r) => (
+              <tr>
+                <td class="mono">
+                  <a href={withBase(`/in/license/${r.fssai_id}`)}>
+                    {r.fssai_id}
+                  </a>
+                </td>
+                <td>{r.premises?.legal_name ?? "—"}</td>
+                <td class="mono">{r.premises?.premises_type ?? "—"}</td>
+                <td>
+                  {r.decoded.tier === "basic_registration"
+                    ? "Basic Registration (No Pre-Inspection)"
+                    : "Tier-1 License"}
+                </td>
+                <td class="mono">{r.ghost_brand_count}</td>
+                <td>
+                  {r.events[0] ? (
+                    <span class="badge">{r.events[0].status}</span>
+                  ) : (
+                    "—"
+                  )}
+                </td>
+              </tr>
+            ))
+          }
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-header">
+      <h2 style="margin:0;font-size:1.1rem;">
+        Nearby Options (Illustrative) ({verifiedSwitches.length})
+      </h2>
+    </div>
+    {
+      verifiedSwitches.length === 0 ? (
+        <p style="margin:0;color:var(--text-muted);">
+          No illustrative nearby options found in {pin}.
+        </p>
+      ) : (
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Illustrative Name</th>
+                <th>Premises Type</th>
+                <th>Illustrative Basis</th>
+                <th>Fact Receipt</th>
+              </tr>
+            </thead>
+            <tbody>
+              {verifiedSwitches.map((opt) => {
+                const reg = opt.premises.regulatory_ids.find(
+                  (r) => r.scheme === "IN_FSSAI_14",
+                );
+                return (
+                  <tr>
+                    <td>{opt.premises.legal_name}</td>
+                    <td class="mono">{opt.premises.premises_type}</td>
+                    <td>{opt.verification_reasons.join(" · ")}</td>
+                    <td class="mono">
+                      {reg ? (
+                        <a href={withBase(`/in/license/${reg.raw_value}`)}>
+                          {reg.raw_value}
+                        </a>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )
+    }
+  </section>
+</BaseLayout>

@@ -1,0 +1,118 @@
+---
+import FactReceiptCard from "../../../components/FactReceiptCard.astro";
+import {
+  getAllLicenseIds,
+  getFactReceiptFromSeed,
+  getVerifiedNearbyFromSeed,
+} from "../../../data/seed";
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import { withBase } from "../../../lib/base";
+
+export function getStaticPaths() {
+  return getAllLicenseIds().map((id) => ({
+    params: { id },
+  }));
+}
+
+const { id } = Astro.params;
+const receipt = getFactReceiptFromSeed(id);
+const postalCode = receipt.premises?.postal_code ?? null;
+const nearbySwitches = postalCode
+  ? getVerifiedNearbyFromSeed(postalCode)
+  : [];
+---
+
+<BaseLayout
+  title={`FSSAI ${receipt.fssai_id} — Illustrative Fact Receipt | india-ate`}
+  description={`Synthetic demo Fact Receipt for 14-digit FSSAI ID ${receipt.fssai_id}: license tier, illustrative ghost-brand cluster count (${receipt.ghost_brand_count}), and demo records. Not an official FSSAI/FoSCoS record.`}
+  noindex
+>
+  <FactReceiptCard
+    receipt={receipt}
+    heading={
+      receipt.premises
+        ? `Fact Receipt: ${receipt.premises.legal_name}`
+        : `Fact Receipt: FSSAI ${receipt.fssai_id}`
+    }
+  />
+
+  {
+    postalCode && (
+      <section class="card">
+        <div class="card-header">
+          <h2 style="margin:0;font-size:1.1rem;">
+            Nearby Switch (Illustrative) — Pin Code {postalCode}
+          </h2>
+          <a href={withBase(`/in/pincode/${postalCode}`)}>
+            View Full Pin-Code Atlas →
+          </a>
+        </div>
+        {nearbySwitches.length === 0 ? (
+          <p style="margin:0;color:var(--text-muted);">
+            No illustrative nearby options with completed hygiene audits or
+            Tier-1 licenses in {postalCode}.
+          </p>
+        ) : (
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Illustrative Name</th>
+                  <th>Premises Type</th>
+                  <th>Illustrative Basis</th>
+                  <th>Fact Receipt</th>
+                </tr>
+              </thead>
+              <tbody>
+                {nearbySwitches.map((opt) => {
+                  const fssaiReg = opt.premises.regulatory_ids.find(
+                    (r) => r.scheme === "IN_FSSAI_14",
+                  );
+                  return (
+                    <tr>
+                      <td>{opt.premises.legal_name}</td>
+                      <td class="mono">{opt.premises.premises_type}</td>
+                      <td>{opt.verification_reasons.join(" · ")}</td>
+                      <td class="mono">
+                        {fssaiReg ? (
+                          <a
+                            href={withBase(
+                              `/in/license/${fssaiReg.raw_value}`,
+                            )}
+                          >
+                            {fssaiReg.raw_value}
+                          </a>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    )
+  }
+
+  <section class="card">
+    <div class="card-header">
+      <h2 style="margin:0;font-size:1.1rem;">
+        1-Tap Food Safety Connect Grievance
+      </h2>
+    </div>
+    <p style="margin:0 0 0.75rem;">
+      Need to report spoiled food, misbranding, a 30% remaining shelf-life
+      violation, or an unlicensed/suspended operation for{" "}
+      <span class="mono">{receipt.fssai_id}</span>?
+    </p>
+    <a
+      class="btn"
+      href={withBase(`/?fssai=${receipt.fssai_id}#grievance`)}
+    >
+      Generate Grievance Packet for {receipt.fssai_id}
+    </a>
+  </section>
+</BaseLayout>

@@ -1,0 +1,270 @@
+---
+import { withBase } from "../lib/base";
+import { describeLicenseTierFact } from "../lib/fssai";
+import {
+  receiptUsesSyntheticData,
+  verificationTierLabel,
+} from "../lib/provenance";
+import type { FactReceipt } from "../lib/types";
+
+interface Props {
+  receipt: FactReceipt;
+  heading?: string;
+}
+
+const { receipt, heading = "FSSAI Fact Receipt" } = Astro.props;
+const tierFact = describeLicenseTierFact(receipt.decoded);
+const synthetic = receiptUsesSyntheticData(receipt);
+---
+
+<section class="card" aria-labelledby="fact-receipt-heading">
+  <div class="card-header">
+    <div>
+      <h1 id="fact-receipt-heading" style="margin:0;font-size:1.35rem;">
+        {heading}
+      </h1>
+      <p class="mono" style="margin:0.25rem 0 0;font-size:1rem;">
+        FSSAI ID: {receipt.fssai_id}
+      </p>
+    </div>
+    <div>
+      {
+        synthetic ? (
+          <span class="badge">Synthetic demo — not an official record</span>
+        ) : receipt.last_verified_at ? (
+          <span class="badge">
+            Last provenance snapshot: {receipt.last_verified_at}
+          </span>
+        ) : (
+          <span class="badge">Offline ID Decode Only (Not Cached in Registry)</span>
+        )
+      }
+    </div>
+  </div>
+
+  {
+    synthetic && (
+      <div class="notice">
+        <strong>Illustrative data only.</strong> This page is generated from the
+        repository's synthetic demo fixtures. The FSSAI ID is a format-valid
+        example, not a statement about the real licensee.
+      </div>
+    )
+  }
+
+  <div class="notice">
+    <strong>License Tier (Statutory Rule):</strong> {tierFact}
+  </div>
+
+  <dl class="kv-list">
+    <div class="kv-item">
+      <dt>Authority Scope</dt>
+      <dd>
+        {
+          receipt.decoded.authority_scope === "central"
+            ? "Central Authority"
+            : "State / UT Authority"
+        }
+      </dd>
+    </div>
+    <div class="kv-item">
+      <dt>State / UT Code</dt>
+      <dd>
+        {receipt.decoded.state_name} ({receipt.decoded.state_code})
+      </dd>
+    </div>
+    <div class="kv-item">
+      <dt>Registration Year</dt>
+      <dd class="mono">{receipt.decoded.registration_year}</dd>
+    </div>
+    <div class="kv-item">
+      <dt>Officer Code / Serial</dt>
+      <dd class="mono">
+        {receipt.decoded.officer_code} / {receipt.decoded.serial}
+      </dd>
+    </div>
+    {
+      receipt.decoded.central_regional_office && (
+        <div class="kv-item">
+          <dt>Central Regional Office</dt>
+          <dd>
+            {receipt.decoded.central_regional_office} (
+            {receipt.decoded.officer_jurisdiction_state})
+          </dd>
+        </div>
+      )
+    }
+    <div class="kv-item">
+      <dt>Ghost-Brand Cluster Count</dt>
+      <dd class="mono">{receipt.ghost_brand_count}</dd>
+    </div>
+  </dl>
+
+  {
+    receipt.premises && (
+      <div style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid var(--surface-alt);">
+        <h2 style="margin:0 0 0.65rem;font-size:1.05rem;">
+          {synthetic
+            ? "Illustrative Physical Premises"
+            : "Registered Physical Premises"}
+        </h2>
+        <dl class="kv-list">
+          <div class="kv-item">
+            <dt>Legal Name</dt>
+            <dd>{receipt.premises.legal_name}</dd>
+          </div>
+          <div class="kv-item">
+            <dt>Premises Type</dt>
+            <dd class="mono">{receipt.premises.premises_type}</dd>
+          </div>
+          <div class="kv-item">
+            <dt>Address</dt>
+            <dd>{receipt.premises.address ?? "Not recorded"}</dd>
+          </div>
+          <div class="kv-item">
+            <dt>Pin Code</dt>
+            <dd class="mono">
+              {receipt.premises.postal_code ? (
+                <a
+                  href={withBase(
+                    `/in/pincode/${receipt.premises.postal_code}`,
+                  )}
+                >
+                  {receipt.premises.postal_code}
+                </a>
+              ) : (
+                "Not recorded"
+              )}
+            </dd>
+          </div>
+        </dl>
+      </div>
+    )
+  }
+</section>
+
+<section class="card">
+  <div class="card-header">
+    <h2 style="margin:0;font-size:1.1rem;">
+      {synthetic ? "Illustrative Ghost-Brand Cluster" : "Ghost-Brand Cluster"} (
+      {receipt.ghost_brand_count} observed storefront
+      {receipt.ghost_brand_count === 1 ? "" : "s"})
+    </h2>
+  </div>
+  {
+    receipt.brand_listings.length === 0 ? (
+      <p style="margin:0;color:var(--text-muted);">
+        No platform storefront listings recorded for this 14-digit FSSAI ID yet.
+      </p>
+    ) : (
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Display Name</th>
+              <th>Platform</th>
+              <th>Pin Code</th>
+              <th>First / Last Seen</th>
+              <th>Primary Source</th>
+            </tr>
+          </thead>
+          <tbody>
+            {receipt.brand_listings.map((listing) => (
+              <tr>
+                <td>{listing.display_name}</td>
+                <td class="mono">{listing.platform}</td>
+                <td class="mono">{listing.postal_code ?? "—"}</td>
+                <td class="mono">
+                  {listing.first_seen_at.slice(0, 10)} →{" "}
+                  {listing.last_seen_at.slice(0, 10)}
+                </td>
+                <td>
+                  <a
+                    href={listing.provenance.source_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {listing.provenance.source_name}
+                  </a>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
+</section>
+
+<section class="card">
+  <div class="card-header">
+    <h2 style="margin:0;font-size:1.1rem;">
+      {synthetic
+        ? "Illustrative Records (Synthetic Demo)"
+        : "Official Authoritative Records"}{" "}
+      ({receipt.events.length})
+    </h2>
+  </div>
+  {
+    receipt.events.length === 0 ? (
+      <p style="margin:0;color:var(--text-muted);">
+        {synthetic
+          ? "No illustrative enforcement, recall, or hygiene events in this demo snapshot."
+          : "No official enforcement, recall, or hygiene audit events recorded in this snapshot."}
+      </p>
+    ) : (
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Event Type</th>
+              <th>Verbatim Status</th>
+              <th>{synthetic ? "Illustrative Summary" : "Official Summary"}</th>
+              <th>Primary Source</th>
+            </tr>
+          </thead>
+          <tbody>
+            {receipt.events.map((ev) => (
+              <tr>
+                <td class="mono">{ev.event_date}</td>
+                <td class="mono">{ev.event_type}</td>
+                <td>
+                  <span class="badge">{ev.status}</span>
+                </td>
+                <td>
+                  {ev.verbatim_summary}
+                  {ev.batch_or_lot_no && (
+                    <div class="mono" style="font-size:0.8rem;margin-top:0.2rem;">
+                      Batch/Lot: {ev.batch_or_lot_no}
+                    </div>
+                  )}
+                </td>
+                <td>
+                  <a
+                    href={ev.provenance.source_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {ev.provenance.source_name}
+                  </a>
+                  <div>
+                    <span class="badge">
+                      {verificationTierLabel(ev.provenance.verification_tier)}
+                    </span>
+                  </div>
+                  <div
+                    class="mono"
+                    style="font-size:0.72rem;color:var(--text-muted);"
+                  >
+                    sha256: {ev.provenance.content_sha256.slice(0, 12)}…
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
+</section>
