@@ -1,0 +1,15 @@
+{
+  "records": [
+    {
+      "fssai_id": "22711126011608",
+      "legal_name": "Awadh Kitchens",
+      "premises_type": "restaurant",
+      "address": "45 Hazratganj",
+      "postal_code": "226001",
+      "city": "Lucknow",
+      "state": "Uttar Pradesh",
+      "rating": "4/5",
+      "audit_date": "2026-03-10"
+    }
+  ]
+}
