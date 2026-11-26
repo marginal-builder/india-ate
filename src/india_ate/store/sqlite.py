@@ -12,6 +12,7 @@ from india_ate.models import (
     FoodPremises,
     IngestionBatch,
     QuarantinedRecord,
+    RegulatoryIdentifier,
 )
 from india_ate.store._dispatch import entity_insert_spec
 from india_ate.store._params import (
@@ -47,10 +48,23 @@ def _dedup_merge[T](existing: list[T], incoming: list[T]) -> list[T]:
     return merged
 
 
+def _dedup_regulatory_ids(
+    existing: list[RegulatoryIdentifier], incoming: list[RegulatoryIdentifier]
+) -> list[RegulatoryIdentifier]:
+    merged: list[RegulatoryIdentifier] = []
+    seen: set[tuple[str, str, str]] = set()
+    for reg in (*existing, *incoming):
+        key = (reg.jurisdiction_iso, reg.scheme, reg.raw_value.strip())
+        if key not in seen:
+            seen.add(key)
+            merged.append(reg)
+    return merged
+
+
 def _merge_premises(existing: FoodPremises, incoming: FoodPremises) -> FoodPremises:
     updates: dict[str, object] = {
         "provenance": _dedup_merge(existing.provenance, incoming.provenance),
-        "regulatory_ids": _dedup_merge(
+        "regulatory_ids": _dedup_regulatory_ids(
             existing.regulatory_ids, incoming.regulatory_ids
         ),
     }

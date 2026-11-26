@@ -472,6 +472,27 @@ def test_sqlite_store_save_premises_merges_provenance_reg_ids_and_optional_field
         assert preserved_zero.lat == 0.0
         assert preserved_zero.lon == 0.0
 
+        # Generic RegulatoryIdentifier with same (jurisdiction_iso, scheme, raw_value)
+        # as IndiaFSSAI14 must not create a duplicate regulatory_ids entry.
+        generic_fssai = RegulatoryIdentifier(
+            jurisdiction_iso="IN",
+            scheme="IN_FSSAI_14",
+            raw_value="23624001000123",
+        )
+        third_generic_reg = FoodPremises(
+            entity_id="actor:in:fssai:23624001000123",
+            legal_name="Deccan Cloud Hospitality",
+            jurisdiction_iso="IN",
+            regulatory_ids=[generic_fssai],
+            provenance=[second_provenance],
+            premises_type="cloud_kitchen",
+        )
+        store.save_premises(third_generic_reg)
+        deduped = store.get_premises_by_entity_id(first.entity_id)
+        assert deduped is not None
+        assert len(deduped.regulatory_ids) == 2
+        assert deduped.regulatory_ids == [fssai_reg, gstin_reg]
+
 
 def test_sqlite_store_save_ingestion_batch_merges_premises_across_adapters(
     official_provenance: EvidenceProvenance,

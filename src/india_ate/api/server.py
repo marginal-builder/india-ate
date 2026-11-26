@@ -1,6 +1,7 @@
 """Stdlib ThreadingHTTPServer wrapper for the india-ate REST API."""
 
 import json
+import socketserver
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
@@ -17,6 +18,13 @@ class _IndiaAteHTTPServer(ThreadingHTTPServer):
     ) -> None:
         self.db_path = db_path
         super().__init__(server_address, request_handler_class)
+
+    def server_bind(self) -> None:
+        """Bind socket without blocking on reverse DNS via socket.getfqdn."""
+        socketserver.TCPServer.server_bind(self)
+        host, port = self.server_address[:2]
+        self.server_name = str(host) or "localhost"
+        self.server_port = int(port)
 
 
 class _RequestHandler(BaseHTTPRequestHandler):
