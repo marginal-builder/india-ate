@@ -44,6 +44,16 @@ CREATE TABLE IF NOT EXISTS authoritative_events (
 );
 CREATE INDEX IF NOT EXISTS idx_events_target
     ON authoritative_events (target_entity_id);
+
+CREATE TABLE IF NOT EXISTS quarantined_records (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_name TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    quarantined_at TEXT NOT NULL,
+    payload_json TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_quarantined_source
+    ON quarantined_records (source_name);
 """
 
 INSERT_PREMISES_SQL = """
@@ -65,4 +75,10 @@ INSERT OR REPLACE INTO authoritative_events (
     event_id, event_type, target_entity_id, jurisdiction_iso,
     event_date, status, batch_or_lot_no, verbatim_summary, payload_json
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+"""
+
+INSERT_QUARANTINED_SQL = """
+INSERT INTO quarantined_records (
+    source_name, reason, quarantined_at, payload_json
+) VALUES (?, ?, ?, ?)
 """

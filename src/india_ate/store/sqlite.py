@@ -6,15 +6,26 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict
 
-from india_ate.models import AuthoritativeEvent, BrandListing, FoodPremises
+from india_ate.models import (
+    AuthoritativeEvent,
+    BrandListing,
+    FoodPremises,
+    IngestionBatch,
+    QuarantinedRecord,
+)
+from india_ate.store._params import (
+    brand_listing_params,
+    event_params,
+    premises_params,
+    quarantined_params,
+)
 from india_ate.store._schema import (
     INSERT_BRAND_LISTING_SQL,
     INSERT_EVENT_SQL,
     INSERT_PREMISES_SQL,
+    INSERT_QUARANTINED_SQL,
     SCHEMA_SQL,
 )
-
-FSSAI_SCHEME = "IN_FSSAI_14"
 
 
 class GhostBrandCluster(BaseModel):
@@ -24,13 +35,6 @@ class GhostBrandCluster(BaseModel):
 
     premises: FoodPremises
     listings: list[BrandListing]
-
-
-def _extract_fssai_id(premises: FoodPremises) -> str | None:
-    for reg in premises.regulatory_ids:
-        if reg.scheme == FSSAI_SCHEME:
-            return reg.raw_value.strip()
-    return None
 
 
 class SQLiteStore:
@@ -68,28 +72,14 @@ class SQLiteStore:
         return model_cls.model_validate_json(row[0]) if row is not None else None
 
     def _fetch_many_models[ModelT: BaseModel](
-        self, model_cls: type[ModelT], sql: str, param: str
+        self, model_cls: type[ModelT], sql: str, params: tuple[object, ...] = ()
     ) -> list[ModelT]:
-        rows = self._conn.execute(sql, (param,)).fetchall()
+        rows = self._conn.execute(sql, params).fetchall()
         return [model_cls.model_validate_json(row[0]) for row in rows]
 
     def save_premises(self, premises: FoodPremises) -> None:
         """Insert or replace a FoodPremises record."""
-        params = (
-            premises.entity_id,
-            premises.legal_name,
-            premises.jurisdiction_iso,
-            premises.premises_type,
-            premises.address,
-            premises.postal_code,
-            premises.city,
-            premises.state,
-            premises.lat,
-            premises.lon,
-            _extract_fssai_id(premises),
-            premises.model_dump_json(),
-        )
-        self._execute_write(INSERT_PREMISES_SQL, params)
+        self._execute_write(INSERT_PREMISES_SQL, premises_params(premises))
 
     def get_premises_by_entity_id(self, entity_id: str) -> FoodPremises | None:
         """Retrieve a FoodPremises by its canonical entity_id."""
@@ -103,17 +93,7 @@ class SQLiteStore:
 
     def save_brand_listing(self, listing: BrandListing) -> None:
         """Insert or replace a BrandListing record."""
-        params = (
-            listing.listing_id,
-            listing.display_name,
-            listing.platform,
-            listing.premises_entity_id,
-            listing.postal_code,
-            listing.first_seen_at.isoformat(),
-            listing.last_seen_at.isoformat(),
-            listing.model_dump_json(),
-        )
-        self._execute_write(INSERT_BRAND_LISTING_SQL, params)
+        self._execute_write(INSERT_BRAND_LISTING_SQL, brand_listing_params(listing))
 
     def get_brand_listings_for_premises(
         self, premises_entity_id: str
@@ -123,22 +103,11 @@ class SQLiteStore:
             "SELECT payload_json FROM brand_listings "
             "WHERE premises_entity_id = ? ORDER BY listing_id"
         )
-        return self._fetch_many_models(BrandListing, sql, premises_entity_id)
+        return self._fetch_many_models(BrandListing, sql, (premises_entity_id,))
 
     def save_event(self, event: AuthoritativeEvent) -> None:
         """Insert or replace an AuthoritativeEvent record."""
-        params = (
-            event.event_id,
-            event.event_type,
-            event.target_entity_id,
-            event.jurisdiction_iso,
-            event.event_date.isoformat(),
-            event.status,
-            event.batch_or_lot_no,
-            event.verbatim_summary,
-            event.model_dump_json(),
-        )
-        self._execute_write(INSERT_EVENT_SQL, params)
+        self._execute_write(INSERT_EVENT_SQL, event_params(event))
 
     def get_events_for_target(self, target_entity_id: str) -> list[AuthoritativeEvent]:
         """Retrieve all AuthoritativeEvents targeting an entity_id."""
@@ -146,7 +115,31 @@ class SQLiteStore:
             "SELECT payload_json FROM authoritative_events "
             "WHERE target_entity_id = ? ORDER BY event_id"
         )
-        return self._fetch_many_models(AuthoritativeEvent, sql, target_entity_id)
+        return self._fetch_many_models(AuthoritativeEvent, sql, (target_entity_id,))
+
+    def save_ingestion_batch(self, batch: IngestionBatch) -> None:
+        """Persist entities and quarantined records atomically in one transaction."""
+        with self._conn:
+            for entity in batch.entities:
+                if isinstance(entity, FoodPremises):
+                    self._conn.execute(INSERT_PREMISES_SQL, premises_params(entity))
+                elif isinstance(entity, AuthoritativeEvent):
+                    self._conn.execute(INSERT_EVENT_SQL, event_params(entity))
+            for record in batch.quarantined:
+                self._conn.execute(INSERT_QUARANTINED_SQL, quarantined_params(record))
+
+    def list_quarantined(
+        self, source_name: str | None = None
+    ) -> list[QuarantinedRecord]:
+        """List quarantined records, optionally filtered by source_name."""
+        if source_name is not None:
+            sql = (
+                "SELECT payload_json FROM quarantined_records "
+                "WHERE source_name = ? ORDER BY id"
+            )
+            return self._fetch_many_models(QuarantinedRecord, sql, (source_name,))
+        sql = "SELECT payload_json FROM quarantined_records ORDER BY id"
+        return self._fetch_many_models(QuarantinedRecord, sql)
 
     def query_ghost_brand_cluster(self, fssai_id: str) -> GhostBrandCluster | None:
         """Query the physical premises and all brand listings for an FSSAI ID."""
@@ -162,4 +155,4 @@ class SQLiteStore:
             "SELECT payload_json FROM food_premises "
             "WHERE postal_code = ? ORDER BY entity_id"
         )
-        return self._fetch_many_models(FoodPremises, sql, postal_code)
+        return self._fetch_many_models(FoodPremises, sql, (postal_code,))
