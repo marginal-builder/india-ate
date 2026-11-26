@@ -1,9 +1,17 @@
 """Unit tests for HygieneRatingAdapter."""
 
 import hashlib
+import json
+from datetime import UTC
 from pathlib import Path
 
-from india_ate.adapters.hygiene_rating import HygieneRatingAdapter
+import pytest
+
+from india_ate.adapters._hygiene_parser import clean_str, optional_str
+from india_ate.adapters.hygiene_rating import (
+    DEFAULT_HYGIENE_URL,
+    HygieneRatingAdapter,
+)
 from india_ate.models import AuthoritativeEvent, FoodPremises
 
 FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures"
@@ -141,8 +149,122 @@ def test_hygiene_adapter_quarantines_devanagari_and_missing_fields() -> None:
 
 def test_hygiene_adapter_parse_edge_cases() -> None:
     adapter = HygieneRatingAdapter(fetcher=_StubFetcher(b"[]"))
+    assert adapter.parse(b"") == []
     assert len(adapter.parse(b'[{"fssai_id": "123"}]')) == 1
+    assert len(adapter.parse(b'   \n[{"fssai_id": "123"}]')) == 1
     assert len(adapter.parse(b'{"fssai_id": "123"}')) == 1
     assert adapter.parse(b'"scalar"') == []
     assert adapter.parse(b"<html><body><p>No table</p></body></html>") == []
     assert adapter.parse(b"<table><tr><td>No headers</td></tr></table>") == []
+
+    # Non-dict JSON items are filtered out
+    mixed = b'{"records": [123, "bad", {"fssai_id": "10013022000417"}]}'
+    assert adapter.parse(mixed) == [{"fssai_id": "10013022000417"}]
+
+    # Invalid JSON raises JSONDecodeError
+    with pytest.raises(json.JSONDecodeError):
+        adapter.parse(b"{invalid json")
+
+    # Malformed HTML with preceding div, padded headers/cells, and mismatched row
+    html = (
+        b"<div><p>Banner</p></div>"
+        b"<table><tr><th> FSSAI_ID </th><th> Legal_Name </th></tr>"
+        b"<tr><td>  10013022000417  </td><td>  Acme Foods  </td></tr>"
+        b"<tr><td>only-one-cell</td></tr>"
+        b"</table>"
+    )
+    assert adapter.parse(html) == [
+        {"fssai_id": "10013022000417", "legal_name": "Acme Foods"}
+    ]
+
+
+def test_hygiene_adapter_optional_fields_default_type_and_provenance() -> None:
+    assert clean_str(123) == ""
+    assert clean_str("  hi  ") == "hi"
+    assert optional_str("   ") is None
+    assert optional_str("  Mumbai  ") == "Mumbai"
+
+    raw = b'[{"fssai_id": "10013022000417", "legal_name": "Acme"}]'
+    fetcher = _StubFetcher(raw)
+    adapter = HygieneRatingAdapter(fetcher=fetcher)
+
+    # Default provenance before fetch/parse
+    batch_initial = adapter.validate_and_emit_batch(
+        [
+            {
+                "fssai_id": "10013022000417",
+                "legal_name": "Acme",
+                "rating": "5/5",
+                "audit_date": "2026-02-14",
+                "address": "  12 MG Road  ",
+                "postal_code": " 400001 ",
+                "city": " Mumbai ",
+                "state": " Maharashtra ",
+            }
+        ]
+    )
+    premises = batch_initial.entities[0]
+    assert isinstance(premises, FoodPremises)
+    assert premises.premises_type == "restaurant"
+    assert premises.address == "12 MG Road"
+    assert premises.postal_code == "400001"
+    assert premises.city == "Mumbai"
+    assert premises.state == "Maharashtra"
+    assert premises.provenance[0].content_sha256 == hashlib.sha256(b"").hexdigest()
+    assert premises.provenance[0].retrieved_at.tzinfo == UTC
+
+    # fetch() with state_code=None passes params=None and updates sha256
+    fetched = adapter.fetch()
+    assert fetched == raw
+    assert fetcher.requested_urls == [(DEFAULT_HYGIENE_URL, None)]
+    batch_after_fetch = adapter.validate_and_emit_batch(
+        [
+            {
+                "fssai_id": "10013022000417",
+                "legal_name": "Acme",
+                "rating": "5/5",
+                "audit_date": "2026-02-14",
+            }
+        ]
+    )
+    p2 = batch_after_fetch.entities[0]
+    assert isinstance(p2, FoodPremises)
+    assert p2.provenance[0].content_sha256 == hashlib.sha256(raw).hexdigest()
+    assert p2.provenance[0].retrieved_at.tzinfo == UTC
+
+
+def test_hygiene_adapter_exact_validation_error_messages() -> None:
+    adapter = HygieneRatingAdapter(fetcher=_StubFetcher(b"[]"))
+    rows = [
+        {
+            "fssai_id": "",
+            "legal_name": "A",
+            "rating": "5/5",
+            "audit_date": "2026-02-14",
+        },
+        {
+            "fssai_id": "१००१३०२२०००४१७",
+            "legal_name": "B",
+            "rating": "5/5",
+            "audit_date": "2026-02-14",
+        },
+        {
+            "fssai_id": "1001302200041a",
+            "legal_name": "C",
+            "rating": "5/5",
+            "audit_date": "2026-02-14",
+        },
+        {
+            "fssai_id": "10013022000417",
+            "legal_name": "D",
+            "rating": "5/5",
+            "audit_date": "bad-date",
+        },
+    ]
+    batch = adapter.validate_and_emit_batch(rows)
+    assert [q.reason for q in batch.quarantined] == [
+        "Missing mandatory fssai_id",
+        "FSSAI ID must contain ASCII digits only",
+        "FSSAI ID must be a 14-digit numeric string",
+        "Missing or invalid audit_date",
+    ]
