@@ -16,6 +16,7 @@ from india_ate.models.base import (
 from india_ate.models.events import AuthoritativeEvent, EventType
 from india_ate.models.food_item import FoodItem, ItemKind
 from india_ate.models.identifiers import IndiaFSSAI14
+from india_ate.models.ingestion import IngestionBatch, QuarantinedRecord
 from india_ate.models.standards import ScientificStandard, StandardType
 from india_ate.models.substance import Substance, SubstanceClass
 
@@ -28,9 +29,11 @@ __all__ = [
     "FoodItem",
     "FoodPremises",
     "IndiaFSSAI14",
+    "IngestionBatch",
     "ItemKind",
     "PlatformType",
     "PremisesType",
+    "QuarantinedRecord",
     "RegulatoryIdentifier",
     "ScientificStandard",
     "StandardType",
