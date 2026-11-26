@@ -5,6 +5,14 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   backend-quality:
@@ -12,6 +20,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
       - name: Install Python dependencies
         run: uv sync --extra dev
       - name: Lint and format check
@@ -23,7 +33,16 @@ jobs:
       - name: Unit and BDD acceptance tests (coverage >= 95%)
         run: uv run pytest --cov=india_ate --cov-fail-under=95 -q
       - name: Complexity gate
-        run: uv run radon cc src/ -a -nb
+        run: |
+          uv run radon cc src/ -a -nb
+          if [ -n "$(uv run radon cc src/ -nc)" ]; then
+            echo "Cyclomatic complexity above grade B detected."
+            exit 1
+          fi
+      - name: Build package artifacts
+        run: uv build
+      - name: Verify installed package metadata
+        run: uv run python -c "import india_ate; print(india_ate.__version__)"
 
   frontend-quality:
     runs-on: ubuntu-latest
@@ -41,6 +60,12 @@ jobs:
       - run: npm test
       - run: npm run check
       - run: npm run build
+      - name: Verify GitHub Pages base path
+        run: npm run build
+        env:
+          BASE_PATH: /india-ate/
+          SITE_URL: https://example.github.io
+      - run: npm audit --omit=dev --audit-level=high
 
   api-contract-e2e:
     runs-on: ubuntu-latest
@@ -48,49 +73,89 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
       - run: uv sync --extra dev
-      - run: npm install -g postman-cli
+      - run: npm install -g postman-cli@1.94.0
       - name: Lint Postman collection and environment
         run: |
           postman collection lint postman/collections/india-ate-api --fail-severity warning
           postman environment lint postman/environments/local.environment.yaml --fail-severity warning
       - name: Seed test DB, start server, and run Postman collection
         run: |
-          uv run python -c "
+          uv run python - <<'PY'
           from datetime import date, datetime, timezone
           from india_ate.models import (
-              AuthoritativeEvent, BrandListing, EvidenceProvenance,
-              FoodItem, FoodPremises, IndiaFSSAI14, ScientificStandard, Substance
+              AuthoritativeEvent, BrandListing, EvidenceProvenance, FoodItem,
+              FoodPremises, IndiaFSSAI14, ScientificStandard, Substance,
           )
           from india_ate.store import SQLiteStore
+
           prov = EvidenceProvenance(
-              source_name='CI Seed', source_url='https://hygiene.fssai.gov.in/',
+              source_name='CI Test Fixture',
+              source_url='https://hygiene.fssai.gov.in/',
               retrieved_at=datetime(2026, 11, 26, tzinfo=timezone.utc),
-              content_sha256='a'*64, verification_tier='official_registry'
+              content_sha256='a' * 64,
+              verification_tier='official_registry',
           )
-          with SQLiteStore('/tmp/ci.db') as s:
-              s.initialize()
-              s.save_premises(FoodPremises(
-                  entity_id='actor:in:fssai:21226001000412', legal_name='Spice Route Cloud Kitchen',
-                  jurisdiction_iso='IN', regulatory_ids=[IndiaFSSAI14(raw_value='21226001000412')],
-                  provenance=[prov], premises_type='cloud_kitchen', postal_code='560034', city='Bengaluru', state='Karnataka'
+          with SQLiteStore('/tmp/ci.db') as store:
+              store.initialize()
+              store.save_premises(FoodPremises(
+                  entity_id='actor:in:fssai:21226001000412',
+                  legal_name='CI Test Cloud Kitchen',
+                  jurisdiction_iso='IN',
+                  regulatory_ids=[IndiaFSSAI14(raw_value='21226001000412')],
+                  provenance=[prov],
+                  premises_type='cloud_kitchen',
+                  postal_code='560034',
+                  city='Bengaluru',
+                  state='Karnataka',
               ))
-              s.save_brand_listing(BrandListing(
-                  listing_id='lst:1', display_name='Spice Route Express', platform='swiggy',
-                  premises_entity_id='actor:in:fssai:21226001000412', postal_code='560034',
+              store.save_brand_listing(BrandListing(
+                  listing_id='lst:1',
+                  display_name='CI Test Listing',
+                  platform='swiggy',
+                  premises_entity_id='actor:in:fssai:21226001000412',
+                  postal_code='560034',
                   first_seen_at=datetime(2026, 11, 1, tzinfo=timezone.utc),
-                  last_seen_at=datetime(2026, 11, 26, tzinfo=timezone.utc), provenance=prov
+                  last_seen_at=datetime(2026, 11, 26, tzinfo=timezone.utc),
+                  provenance=prov,
               ))
-              s.save_food_item(FoodItem(item_id='item:in:ifct:A001', canonical_name='Buffalo Milk', item_kind='raw_staple', ifct_code='A001'))
-              s.save_substance(Substance(substance_id='sub:protein', canonical_name='Protein', substance_class='nutrient'))
-              s.save_scientific_standard(ScientificStandard(
-                  standard_id='std:1', standard_type='nutrient_composition', jurisdiction_iso='IN',
-                  substance_id='sub:protein', food_item_id='item:in:ifct:A001', value=3.7, unit='g/100g', provenance=prov
+              store.save_event(AuthoritativeEvent(
+                  event_id='evt:hygiene:21226001000412:2026-11-20',
+                  event_type='hygiene_audit',
+                  target_entity_id='actor:in:fssai:21226001000412',
+                  jurisdiction_iso='IN',
+                  event_date=date(2026, 11, 20),
+                  status='5/5',
+                  verbatim_summary='CI fixture hygiene audit.',
+                  provenance=prov,
               ))
-          "
+              store.save_food_item(FoodItem(
+                  item_id='item:in:ifct:A001',
+                  canonical_name='Buffalo Milk',
+                  item_kind='raw_staple',
+                  ifct_code='A001',
+              ))
+              store.save_substance(Substance(
+                  substance_id='sub:protein',
+                  canonical_name='Protein',
+                  substance_class='nutrient',
+              ))
+              store.save_scientific_standard(ScientificStandard(
+                  standard_id='std:1',
+                  standard_type='nutrient_composition',
+                  jurisdiction_iso='IN',
+                  substance_id='sub:protein',
+                  food_item_id='item:in:ifct:A001',
+                  value=3.7,
+                  unit='g/100g',
+                  provenance=prov,
+              ))
+          PY
           uv run india-ate serve --db /tmp/ci.db --host 127.0.0.1 --port 8000 &
           SERVER_PID=$!
           trap "kill $SERVER_PID 2>/dev/null || true" EXIT

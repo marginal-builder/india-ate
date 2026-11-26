@@ -1,0 +1,43 @@
+name: Bug report
+description: Report a reproducible defect in the CLI, API, MCP server, or web demo.
+title: "[bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include real personal data, credentials, or database contents.
+        For security vulnerabilities, use private reporting instead (see SECURITY.md).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the defect.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+      description: Commands, endpoint, or UI steps that reproduce the issue.
+      placeholder: |
+        1. Run `uv run india-ate ...`
+        2. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: "0.1.0 or a commit SHA"
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: "OS, Python version, Node version, browser"
