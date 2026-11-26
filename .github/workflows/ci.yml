@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend-quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - name: Install Python dependencies
+        run: uv sync --extra dev
+      - name: Lint and format check
+        run: |
+          uv run ruff check src/ tests/
+          uv run ruff format --check src/ tests/
+      - name: Strict typecheck
+        run: uv run mypy src/
+      - name: Unit and BDD acceptance tests (coverage >= 95%)
+        run: uv run pytest --cov=india_ate --cov-fail-under=95 -q
+      - name: Complexity gate
+        run: uv run radon cc src/ -a -nb
+
+  frontend-quality:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run check
+      - run: npm run build
+
+  api-contract-e2e:
+    runs-on: ubuntu-latest
+    needs: [backend-quality]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: uv sync --extra dev
+      - run: npm install -g postman-cli
+      - name: Lint Postman collection and environment
+        run: |
+          postman collection lint postman/collections/india-ate-api --fail-severity warning
+          postman environment lint postman/environments/local.environment.yaml --fail-severity warning
+      - name: Seed test DB, start server, and run Postman collection
+        run: |
+          uv run python -c "
+          from datetime import date, datetime, timezone
+          from india_ate.models import (
+              AuthoritativeEvent, BrandListing, EvidenceProvenance,
+              FoodItem, FoodPremises, IndiaFSSAI14, ScientificStandard, Substance
+          )
+          from india_ate.store import SQLiteStore
+          prov = EvidenceProvenance(
+              source_name='CI Seed', source_url='https://hygiene.fssai.gov.in/',
+              retrieved_at=datetime(2026, 11, 26, tzinfo=timezone.utc),
+              content_sha256='a'*64, verification_tier='official_registry'
+          )
+          with SQLiteStore('/tmp/ci.db') as s:
+              s.initialize()
+              s.save_premises(FoodPremises(
+                  entity_id='actor:in:fssai:21226001000412', legal_name='Spice Route Cloud Kitchen',
+                  jurisdiction_iso='IN', regulatory_ids=[IndiaFSSAI14(raw_value='21226001000412')],
+                  provenance=[prov], premises_type='cloud_kitchen', postal_code='560034', city='Bengaluru', state='Karnataka'
+              ))
+              s.save_brand_listing(BrandListing(
+                  listing_id='lst:1', display_name='Spice Route Express', platform='swiggy',
+                  premises_entity_id='actor:in:fssai:21226001000412', postal_code='560034',
+                  first_seen_at=datetime(2026, 11, 1, tzinfo=timezone.utc),
+                  last_seen_at=datetime(2026, 11, 26, tzinfo=timezone.utc), provenance=prov
+              ))
+              s.save_food_item(FoodItem(item_id='item:in:ifct:A001', canonical_name='Buffalo Milk', item_kind='raw_staple', ifct_code='A001'))
+              s.save_substance(Substance(substance_id='sub:protein', canonical_name='Protein', substance_class='nutrient'))
+              s.save_scientific_standard(ScientificStandard(
+                  standard_id='std:1', standard_type='nutrient_composition', jurisdiction_iso='IN',
+                  substance_id='sub:protein', food_item_id='item:in:ifct:A001', value=3.7, unit='g/100g', provenance=prov
+              ))
+          "
+          uv run india-ate serve --db /tmp/ci.db --host 127.0.0.1 --port 8000 &
+          SERVER_PID=$!
+          trap "kill $SERVER_PID 2>/dev/null || true" EXIT
+          for i in $(seq 1 20); do curl -sf http://127.0.0.1:8000/health && break; sleep 0.5; done
+          postman collection run postman/collections/india-ate-api -e postman/environments/local.environment.yaml

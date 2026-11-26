@@ -1,0 +1,32 @@
+$kind: http-request
+order: 8000
+method: POST
+url: '{{baseUrl}}/v1/grievance'
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "fssai_id": "{{fssaiId}}",
+      "issue_category": "spoiled_food",
+      "order_reference": "ORD-PM-1001",
+      "description": "Delivered stale meal with broken seal.",
+      "incident_date": "2026-11-26",
+      "persist": true
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |
+      pm.test("status is 200", function () {
+        pm.response.to.have.status(200);
+      });
+      pm.test("generates and persists grievance packet", function () {
+        const json = pm.response.json();
+        pm.expect(json.fssai_id).to.eql("21226001000412");
+        pm.expect(json.ticket_event).to.be.an("object");
+        pm.expect(json.ticket_event.event_type).to.eql("grievance_ticket");
+        pm.expect(json.escalation_deadline).to.eql("2026-12-11");
+      });

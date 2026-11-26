@@ -1,0 +1,28 @@
+$kind: http-request
+order: 9000
+method: POST
+url: '{{baseUrl}}/v1/grievance'
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "fssai_id": "{{fssaiId}}",
+      "issue_category": "spoiled_food",
+      "description": "Invalid string persist value.",
+      "incident_date": "2026-11-26",
+      "persist": "false"
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |
+      pm.test("status is 400 on non-boolean persist", function () {
+        pm.response.to.have.status(400);
+      });
+      pm.test("returns error message", function () {
+        const json = pm.response.json();
+        pm.expect(json.error).to.include("persist");
+      });

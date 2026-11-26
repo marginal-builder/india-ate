@@ -1,0 +1,18 @@
+$kind: http-request
+order: 6000
+method: GET
+url: '{{baseUrl}}/v1/foods?q=milk'
+queryParams:
+  - key: q
+    value: milk
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |
+      pm.test("status is 200", function () {
+        pm.response.to.have.status(200);
+      });
+      pm.test("returns matching food items array", function () {
+        const json = pm.response.json();
+        pm.expect(json.items).to.be.an("array").and.not.be.empty;
+      });

@@ -1,0 +1,20 @@
+$kind: http-request
+order: 2000
+method: GET
+url: '{{baseUrl}}/v1/decode/{{fssaiId}}'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |
+      pm.test("status is 200", function () {
+        pm.response.to.have.status(200);
+      });
+      pm.test("decodes 14-digit FSSAI fields deterministically", function () {
+        const json = pm.response.json();
+        pm.expect(json.tier).to.eql("basic_registration");
+        pm.expect(json.pre_inspection_exempt_post_apr2026).to.eql(true);
+        pm.expect(json.state_code).to.eql("12");
+        pm.expect(json.state_name).to.eql("Karnataka");
+        pm.expect(json.registration_year).to.eql(2026);
+        pm.expect(json.serial).to.eql("000412");
+      });

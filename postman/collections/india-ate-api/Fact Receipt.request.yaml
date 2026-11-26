@@ -1,0 +1,18 @@
+$kind: http-request
+order: 3000
+method: GET
+url: '{{baseUrl}}/v1/receipt/{{fssaiId}}'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |
+      pm.test("status is 200", function () {
+        pm.response.to.have.status(200);
+      });
+      pm.test("returns objective Fact Receipt with premises and events", function () {
+        const json = pm.response.json();
+        pm.expect(json.fssai_id).to.eql("21226001000412");
+        pm.expect(json.premises).to.be.an("object");
+        pm.expect(json.ghost_brand_count).to.be.a("number");
+        pm.expect(json.events).to.be.an("array");
+      });

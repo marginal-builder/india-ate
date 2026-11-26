@@ -1,0 +1,22 @@
+name: india-ate Local
+values:
+  - key: baseUrl
+    value: 'http://127.0.0.1:8000'
+    enabled: true
+    type: default
+    description: Local india-ate HTTP API server base URL
+  - key: fssaiId
+    value: '21226001000412'
+    enabled: true
+    type: default
+    description: Seeded 14-digit FSSAI ID used for contract checks
+  - key: postalCode
+    value: '560034'
+    enabled: true
+    type: default
+    description: Seeded pin code used for Verified Nearby Switch checks
+  - key: foodItemId
+    value: 'item%3Ain%3Aifct%3AA001'
+    enabled: true
+    type: default
+    description: URL-encoded IFCT FoodItem URI

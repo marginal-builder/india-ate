@@ -1,0 +1,16 @@
+$kind: http-request
+order: 4000
+method: GET
+url: '{{baseUrl}}/v1/cluster/{{fssaiId}}'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |
+      pm.test("status is 200", function () {
+        pm.response.to.have.status(200);
+      });
+      pm.test("returns premises and listings array", function () {
+        const json = pm.response.json();
+        pm.expect(json.premises.entity_id).to.be.a("string");
+        pm.expect(json.listings).to.be.an("array").and.not.be.empty;
+      });
