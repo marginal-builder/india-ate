@@ -93,9 +93,9 @@ CENTRAL_RO_DO_CODES: dict[str, tuple[str, str]] = {
 
 
 def _normalize_and_validate(raw_value: str) -> str:
-    """Trim whitespace and verify 14-digit numeric FSSAI format, tier, and state."""
+    """Trim whitespace and verify 14-digit ASCII numeric FSSAI format."""
     cleaned = raw_value.strip()
-    if len(cleaned) != FSSAI_LENGTH or not cleaned.isdigit():
+    if len(cleaned) != FSSAI_LENGTH or not cleaned.isascii() or not cleaned.isdigit():
         raise ValueError("FSSAI ID must be a 14-digit numeric string")
     tier_digit = cleaned[_TIER_INDEX]
     if tier_digit not in _TIER_LABELS:

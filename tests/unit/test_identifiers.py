@@ -101,19 +101,72 @@ def test_decode_trims_whitespace() -> None:
     assert result["state_code"] == "00"
     assert result["serial"] == "000417"
 
+    tabbed = IndiaFSSAI14(raw_value="\t 10013022000417 \n").decode_offline()
+    assert tabbed == result
+
+
+def test_decode_central_unknown_officer_code_returns_none_ro() -> None:
+    result = IndiaFSSAI14(raw_value="10024999000001").decode_offline()
+    assert result["authority_scope"] == "central"
+    assert result["state_code"] == "00"
+    assert result["officer_code"] == "999"
+    assert result["central_regional_office"] is None
+    assert result["officer_jurisdiction_state"] is None
+
+
+def test_decode_boundary_min_and_max_valid_segments() -> None:
+    min_valid = IndiaFSSAI14(raw_value="10000000000000").decode_offline()
+    assert min_valid == {
+        "tier": "license",
+        "pre_inspection_exempt_post_apr2026": False,
+        "authority_scope": "central",
+        "state_code": "00",
+        "state_name": "Central",
+        "registration_year": 2000,
+        "officer_code": "000",
+        "central_regional_office": None,
+        "officer_jurisdiction_state": None,
+        "serial": "000000",
+    }
+
+    max_valid = IndiaFSSAI14(raw_value="23799999999999").decode_offline()
+    assert max_valid == {
+        "tier": "basic_registration",
+        "pre_inspection_exempt_post_apr2026": True,
+        "authority_scope": "state_or_ut",
+        "state_code": "37",
+        "state_name": "Ladakh",
+        "registration_year": 2099,
+        "officer_code": "999",
+        "central_regional_office": None,
+        "officer_jurisdiction_state": None,
+        "serial": "999999",
+    }
+
 
 @pytest.mark.parametrize(
-    ("raw", "expected_substr"),
+    ("raw", "expected_exact"),
     [
-        ("12345", "14-digit"),
-        ("1001302200041A", "14-digit"),
-        ("30013022000417", "tier"),
-        ("13824001000001", "state"),
+        ("", r"^FSSAI ID must be a 14-digit numeric string$"),
+        ("12345", r"^FSSAI ID must be a 14-digit numeric string$"),
+        ("1001302200041", r"^FSSAI ID must be a 14-digit numeric string$"),
+        ("100130220004170", r"^FSSAI ID must be a 14-digit numeric string$"),
+        ("1001302200041A", r"^FSSAI ID must be a 14-digit numeric string$"),
+        ("1001-3022-0004", r"^FSSAI ID must be a 14-digit numeric string$"),
+        ("1001 302200041", r"^FSSAI ID must be a 14-digit numeric string$"),
+        ("              ", r"^FSSAI ID must be a 14-digit numeric string$"),
+        ("१००१३०२२०००४१७", r"^FSSAI ID must be a 14-digit numeric string$"),
+        ("100१३०२२०००४१७", r"^FSSAI ID must be a 14-digit numeric string$"),
+        ("١٠٠١٣٠٢٢٠٠٠٤١٧", r"^FSSAI ID must be a 14-digit numeric string$"),
+        ("1001302200041²", r"^FSSAI ID must be a 14-digit numeric string$"),
+        ("00000000000000", r"^Invalid FSSAI license tier digit: '0'$"),
+        ("30013022000417", r"^Invalid FSSAI license tier digit: '3'$"),
+        ("13824001000001", r"^Unknown FSSAI state or UT code: '38'$"),
     ],
 )
-def test_decode_rejects_invalid_inputs(raw: str, expected_substr: str) -> None:
+def test_decode_rejects_invalid_inputs(raw: str, expected_exact: str) -> None:
     ident = IndiaFSSAI14(raw_value=raw)
-    with pytest.raises(ValueError, match=expected_substr):
+    with pytest.raises(ValueError, match=expected_exact):
         ident.decode_offline()
 
 
@@ -137,4 +190,25 @@ def test_regulatory_identifier_json_roundtrip_preserves_subclass(
     )
     reconstructed = FoodActor.model_validate_json(actor.model_dump_json())
     assert isinstance(reconstructed.regulatory_ids[0], IndiaFSSAI14)
+    assert reconstructed == actor
+
+
+def test_regulatory_identifier_json_roundtrip_preserves_base_for_other_scheme(
+    official_provenance: EvidenceProvenance,
+) -> None:
+    actor = FoodActor(
+        entity_id="actor:us:fda:3001234567",
+        legal_name="US Supplier Inc",
+        jurisdiction_iso="US",
+        regulatory_ids=[
+            RegulatoryIdentifier(
+                jurisdiction_iso="US",
+                scheme="US_FDA_FEI",
+                raw_value="3001234567",
+            )
+        ],
+        provenance=[official_provenance],
+    )
+    reconstructed = FoodActor.model_validate_json(actor.model_dump_json())
+    assert type(reconstructed.regulatory_ids[0]) is RegulatoryIdentifier
     assert reconstructed == actor
