@@ -45,3 +45,24 @@ CREATE TABLE IF NOT EXISTS authoritative_events (
 CREATE INDEX IF NOT EXISTS idx_events_target
     ON authoritative_events (target_entity_id);
 """
+
+INSERT_PREMISES_SQL = """
+INSERT OR REPLACE INTO food_premises (
+    entity_id, legal_name, jurisdiction_iso, premises_type,
+    address, postal_code, city, state, lat, lon, fssai_id, payload_json
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+"""
+
+INSERT_BRAND_LISTING_SQL = """
+INSERT OR REPLACE INTO brand_listings (
+    listing_id, display_name, platform, premises_entity_id,
+    postal_code, first_seen_at, last_seen_at, payload_json
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+"""
+
+INSERT_EVENT_SQL = """
+INSERT OR REPLACE INTO authoritative_events (
+    event_id, event_type, target_entity_id, jurisdiction_iso,
+    event_date, status, batch_or_lot_no, verbatim_summary, payload_json
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+"""
