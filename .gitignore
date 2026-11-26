@@ -16,3 +16,10 @@ mutants/
 *.sqlite
 *.parquet
 .DS_Store
+web/node_modules/
+web/dist/
+web/.astro/
+web/.env
+web/.env.local
+.env
+.env.local
