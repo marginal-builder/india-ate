@@ -54,6 +54,40 @@ CREATE TABLE IF NOT EXISTS quarantined_records (
 );
 CREATE INDEX IF NOT EXISTS idx_quarantined_source
     ON quarantined_records (source_name);
+
+CREATE TABLE IF NOT EXISTS food_items (
+    item_id TEXT PRIMARY KEY,
+    canonical_name TEXT NOT NULL,
+    item_kind TEXT NOT NULL,
+    ifct_code TEXT,
+    foodon_uri TEXT,
+    gtin_barcode TEXT,
+    payload_json TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_food_items_ifct ON food_items (ifct_code);
+CREATE INDEX IF NOT EXISTS idx_food_items_name ON food_items (canonical_name);
+
+CREATE TABLE IF NOT EXISTS substances (
+    substance_id TEXT PRIMARY KEY,
+    canonical_name TEXT NOT NULL,
+    substance_class TEXT NOT NULL,
+    cas_number TEXT,
+    ins_e_number TEXT,
+    payload_json TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS scientific_standards (
+    standard_id TEXT PRIMARY KEY,
+    standard_type TEXT NOT NULL,
+    jurisdiction_iso TEXT NOT NULL,
+    substance_id TEXT NOT NULL,
+    food_item_id TEXT,
+    value REAL NOT NULL,
+    unit TEXT NOT NULL,
+    payload_json TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_standards_food ON scientific_standards (food_item_id);
+CREATE INDEX IF NOT EXISTS idx_standards_sub ON scientific_standards (substance_id);
 """
 
 INSERT_PREMISES_SQL = """
@@ -81,4 +115,25 @@ INSERT_QUARANTINED_SQL = """
 INSERT INTO quarantined_records (
     source_name, reason, quarantined_at, payload_json
 ) VALUES (?, ?, ?, ?)
+"""
+
+INSERT_FOOD_ITEM_SQL = """
+INSERT OR REPLACE INTO food_items (
+    item_id, canonical_name, item_kind, ifct_code,
+    foodon_uri, gtin_barcode, payload_json
+) VALUES (?, ?, ?, ?, ?, ?, ?)
+"""
+
+INSERT_SUBSTANCE_SQL = """
+INSERT OR REPLACE INTO substances (
+    substance_id, canonical_name, substance_class,
+    cas_number, ins_e_number, payload_json
+) VALUES (?, ?, ?, ?, ?, ?)
+"""
+
+INSERT_STANDARD_SQL = """
+INSERT OR REPLACE INTO scientific_standards (
+    standard_id, standard_type, jurisdiction_iso,
+    substance_id, food_item_id, value, unit, payload_json
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 """

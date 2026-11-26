@@ -13,6 +13,7 @@ from india_ate.models import (
     IngestionBatch,
     QuarantinedRecord,
 )
+from india_ate.store._dispatch import entity_insert_spec
 from india_ate.store._params import (
     brand_listing_params,
     event_params,
@@ -26,6 +27,39 @@ from india_ate.store._schema import (
     INSERT_QUARANTINED_SQL,
     SCHEMA_SQL,
 )
+from india_ate.store._science import ScienceStoreMixin
+
+_OPTIONAL_PREMISES_FIELDS = (
+    "address",
+    "postal_code",
+    "city",
+    "state",
+    "lat",
+    "lon",
+)
+
+
+def _dedup_merge[T](existing: list[T], incoming: list[T]) -> list[T]:
+    merged = list(existing)
+    for item in incoming:
+        if item not in merged:
+            merged.append(item)
+    return merged
+
+
+def _merge_premises(existing: FoodPremises, incoming: FoodPremises) -> FoodPremises:
+    updates: dict[str, object] = {
+        "provenance": _dedup_merge(existing.provenance, incoming.provenance),
+        "regulatory_ids": _dedup_merge(
+            existing.regulatory_ids, incoming.regulatory_ids
+        ),
+    }
+    for field in _OPTIONAL_PREMISES_FIELDS:
+        if getattr(incoming, field) is None:
+            existing_val = getattr(existing, field)
+            if existing_val is not None:
+                updates[field] = existing_val
+    return incoming.model_copy(update=updates)
 
 
 class GhostBrandCluster(BaseModel):
@@ -37,8 +71,8 @@ class GhostBrandCluster(BaseModel):
     listings: list[BrandListing]
 
 
-class SQLiteStore:
-    """Parameterized raw sqlite3 store for FoodPremises, BrandListing, and Events."""
+class SQLiteStore(ScienceStoreMixin):
+    """Parameterized raw sqlite3 store for all canonical entity layers."""
 
     def __init__(self, db_path: str | Path = ":memory:") -> None:
         self._db_path = str(db_path)
@@ -77,9 +111,17 @@ class SQLiteStore:
         rows = self._conn.execute(sql, params).fetchall()
         return [model_cls.model_validate_json(row[0]) for row in rows]
 
+    def _upsert_premises(self, premises: FoodPremises) -> None:
+        existing = self.get_premises_by_entity_id(premises.entity_id)
+        merged = (
+            _merge_premises(existing, premises) if existing is not None else premises
+        )
+        self._conn.execute(INSERT_PREMISES_SQL, premises_params(merged))
+
     def save_premises(self, premises: FoodPremises) -> None:
-        """Insert or replace a FoodPremises record."""
-        self._execute_write(INSERT_PREMISES_SQL, premises_params(premises))
+        """Insert or merge a FoodPremises record, preserving provenance and fields."""
+        with self._conn:
+            self._upsert_premises(premises)
 
     def get_premises_by_entity_id(self, entity_id: str) -> FoodPremises | None:
         """Retrieve a FoodPremises by its canonical entity_id."""
@@ -122,9 +164,11 @@ class SQLiteStore:
         with self._conn:
             for entity in batch.entities:
                 if isinstance(entity, FoodPremises):
-                    self._conn.execute(INSERT_PREMISES_SQL, premises_params(entity))
-                elif isinstance(entity, AuthoritativeEvent):
-                    self._conn.execute(INSERT_EVENT_SQL, event_params(entity))
+                    self._upsert_premises(entity)
+                    continue
+                spec = entity_insert_spec(entity)
+                if spec is not None:
+                    self._conn.execute(spec[0], spec[1])
             for record in batch.quarantined:
                 self._conn.execute(INSERT_QUARANTINED_SQL, quarantined_params(record))
 

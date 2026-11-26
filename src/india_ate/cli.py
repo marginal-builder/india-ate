@@ -1,16 +1,22 @@
 """Click CLI entry point for india-ate."""
 
 import json
-from pathlib import Path
+from datetime import date
 from typing import cast
 
 import click
 
-from india_ate.adapters.hygiene_rating import HygieneRatingAdapter
-from india_ate.models import AuthoritativeEvent, FoodPremises, IngestionBatch
+from india_ate._cli_ingest import register_ingest_commands
+from india_ate.api.server import create_http_server
+from india_ate.mcp.server import serve_mcp_stdio
 from india_ate.models.identifiers import IndiaFSSAI14
+from india_ate.services import (
+    GrievanceCategory,
+    build_fact_receipt,
+    find_verified_nearby_switches,
+    generate_grievance_packet,
+)
 from india_ate.store import SQLiteStore
-from india_ate.store.jsonl import EntityModel, export_jsonl
 
 DEFAULT_DB_PATH = "data/india_ate.db"
 
@@ -20,53 +26,6 @@ def _decode_or_raise(fssai_number: str) -> dict[str, object]:
         return IndiaFSSAI14(raw_value=fssai_number).decode_offline()
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
-
-
-def _persist_hygiene_batch(
-    batch: IngestionBatch, db_path: str, jsonl_dir: Path | None
-) -> None:
-    with SQLiteStore(db_path) as store:
-        store.initialize()
-        store.save_ingestion_batch(batch)
-    if jsonl_dir is not None:
-        export_entities = cast(list[EntityModel], batch.entities)
-        export_jsonl(export_entities, jsonl_dir / "hygiene_entities.jsonl")
-
-
-def _format_ingest_summary(batch: IngestionBatch) -> str:
-    summary = {
-        "premises_ingested": sum(
-            1 for entity in batch.entities if isinstance(entity, FoodPremises)
-        ),
-        "events_ingested": sum(
-            1 for entity in batch.entities if isinstance(entity, AuthoritativeEvent)
-        ),
-        "quarantined": len(batch.quarantined),
-    }
-    return json.dumps(summary, indent=2)
-
-
-def _fetch_fact_receipt(
-    fssai_id: str, db_path: str, decoded: dict[str, object]
-) -> dict[str, object]:
-    with SQLiteStore(db_path) as store:
-        store.initialize()
-        premises = store.get_premises_by_fssai_id(fssai_id.strip())
-        if premises is None:
-            return {
-                "decoded": decoded,
-                "premises": None,
-                "brand_listings": [],
-                "events": [],
-            }
-        listings = store.get_brand_listings_for_premises(premises.entity_id)
-        events = store.get_events_for_target(premises.entity_id)
-    return {
-        "decoded": decoded,
-        "premises": premises.model_dump(mode="json"),
-        "brand_listings": [item.model_dump(mode="json") for item in listings],
-        "events": [item.model_dump(mode="json") for item in events],
-    }
 
 
 @click.group()
@@ -86,41 +45,105 @@ def ingest_group() -> None:
     """Ingest authoritative public food safety datasets."""
 
 
-@ingest_group.command("hygiene")
-@click.option(
-    "--from-file",
-    "from_file",
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
-    default=None,
-    help="Local HTML or JSON snapshot file to ingest offline.",
-)
-@click.option("--state", "state_code", type=str, default=None, help="FSSAI state code.")
-@click.option("--db", "db_path", type=str, default=DEFAULT_DB_PATH, show_default=True)
-@click.option(
-    "--jsonl-dir",
-    "jsonl_dir",
-    type=click.Path(file_okay=False, path_type=Path),
-    default=None,
-)
-def ingest_hygiene_command(
-    from_file: Path | None,
-    state_code: str | None,
-    db_path: str,
-    jsonl_dir: Path | None,
-) -> None:
-    """Ingest FSSAI Hygiene Rating records from a local snapshot or live portal."""
-    adapter = HygieneRatingAdapter(state_code=state_code)
-    raw = from_file.read_bytes() if from_file is not None else adapter.fetch()
-    batch = adapter.validate_and_emit_batch(adapter.parse(raw))
-    _persist_hygiene_batch(batch, db_path, jsonl_dir)
-    click.echo(_format_ingest_summary(batch))
+register_ingest_commands(ingest_group, DEFAULT_DB_PATH)
 
 
 @app.command("lookup")
 @click.argument("fssai_id")
 @click.option("--db", "db_path", type=str, default=DEFAULT_DB_PATH, show_default=True)
 def lookup_command(fssai_id: str, db_path: str) -> None:
-    """Print a Fact Receipt JSON for a 14-digit FSSAI ID."""
-    decoded = _decode_or_raise(fssai_id)
-    receipt = _fetch_fact_receipt(fssai_id, db_path, decoded)
-    click.echo(json.dumps(receipt, indent=2))
+    """Print an objective Fact Receipt JSON for a 14-digit FSSAI ID."""
+    _decode_or_raise(fssai_id)
+    with SQLiteStore(db_path) as store:
+        store.initialize()
+        receipt = build_fact_receipt(store, fssai_id)
+    click.echo(json.dumps(receipt.model_dump(mode="json"), indent=2))
+
+
+@app.command("nearby")
+@click.argument("postal_code")
+@click.option("--db", "db_path", type=str, default=DEFAULT_DB_PATH, show_default=True)
+def nearby_command(postal_code: str, db_path: str) -> None:
+    """List verified nearby switch options in a postal code."""
+    with SQLiteStore(db_path) as store:
+        store.initialize()
+        options = [
+            opt.model_dump(mode="json")
+            for opt in find_verified_nearby_switches(store, postal_code)
+        ]
+    click.echo(json.dumps({"postal_code": postal_code, "options": options}, indent=2))
+
+
+def _run_grievance(
+    fssai_id: str,
+    issue_category: str,
+    description: str,
+    incident_date: str,
+    order_ref: str | None,
+    persist: bool,
+    db_path: str,
+) -> dict[str, object]:
+    _decode_or_raise(fssai_id)
+    try:
+        parsed_date = date.fromisoformat(incident_date)
+        with SQLiteStore(db_path) as store:
+            store.initialize()
+            packet = generate_grievance_packet(
+                store=store,
+                fssai_id=fssai_id,
+                issue_category=cast(GrievanceCategory, issue_category),
+                order_reference=order_ref,
+                description=description,
+                incident_date=parsed_date,
+                persist=persist,
+            )
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    return packet.model_dump(mode="json")
+
+
+@app.command("grievance")
+@click.argument("fssai_id")
+@click.option("--category", "issue_category", type=str, required=True)
+@click.option("--description", type=str, required=True)
+@click.option("--incident-date", type=str, required=True)
+@click.option("--order-ref", type=str, default=None)
+@click.option("--persist/--no-persist", default=False)
+@click.option("--db", "db_path", type=str, default=DEFAULT_DB_PATH, show_default=True)
+def grievance_command(
+    fssai_id: str,
+    issue_category: str,
+    description: str,
+    incident_date: str,
+    order_ref: str | None,
+    persist: bool,
+    db_path: str,
+) -> None:
+    """Generate a Food Safety Connect grievance packet."""
+    payload = _run_grievance(
+        fssai_id,
+        issue_category,
+        description,
+        incident_date,
+        order_ref,
+        persist,
+        db_path,
+    )
+    click.echo(json.dumps(payload, indent=2))
+
+
+@app.command("serve")
+@click.option("--host", type=str, default="127.0.0.1", show_default=True)
+@click.option("--port", type=int, default=8000, show_default=True)
+@click.option("--db", "db_path", type=str, default=DEFAULT_DB_PATH, show_default=True)
+def serve_command(host: str, port: int, db_path: str) -> None:
+    """Start the public REST API HTTP server."""
+    server = create_http_server(db_path, host=host, port=port)
+    server.serve_forever()
+
+
+@app.command("mcp")
+@click.option("--db", "db_path", type=str, default=DEFAULT_DB_PATH, show_default=True)
+def mcp_command(db_path: str) -> None:
+    """Run the JSON-RPC 2.0 MCP server over stdio."""
+    serve_mcp_stdio(db_path)

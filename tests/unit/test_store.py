@@ -13,6 +13,8 @@ from india_ate.models import (
     FoodItem,
     FoodPremises,
     IndiaFSSAI14,
+    IngestionBatch,
+    RegulatoryIdentifier,
     ScientificStandard,
     Substance,
 )
@@ -374,3 +376,151 @@ def test_duckdb_parquet_export_and_analytics(
         write_parquet_table([], [("bad col", "VARCHAR")], snap_dir / "bad.parquet")
     with pytest.raises(ValueError, match=r"^Invalid column definition:"):
         write_parquet_table([], [("valid_col", "INT")], snap_dir / "bad_type.parquet")
+
+
+def test_sqlite_store_save_premises_merges_provenance_reg_ids_and_optional_fields(
+    official_provenance: EvidenceProvenance,
+) -> None:
+    from pydantic import HttpUrl
+
+    second_provenance = EvidenceProvenance(
+        source_name="ONDC Retail Catalog",
+        source_url=HttpUrl("https://ondc.org/catalog/snapshot.json"),
+        retrieved_at=datetime(2026, 4, 2, 12, 0, tzinfo=UTC),
+        content_sha256="cafebabe",
+        verification_tier="user_verified_snapshot",
+    )
+    fssai_reg = IndiaFSSAI14(raw_value="23624001000123")
+    gstin_reg = RegulatoryIdentifier(
+        jurisdiction_iso="IN",
+        scheme="IN_GSTIN",
+        raw_value="36AABCU9603R1ZM",
+    )
+
+    first = FoodPremises(
+        entity_id="actor:in:fssai:23624001000123",
+        legal_name="Deccan Cloud Hospitality",
+        jurisdiction_iso="IN",
+        regulatory_ids=[fssai_reg],
+        provenance=[official_provenance],
+        premises_type="cloud_kitchen",
+        address="Plot 12, Jubilee Hills",
+        postal_code="500033",
+        city="Hyderabad",
+        state="Telangana",
+        lat=17.4326,
+        lon=78.4071,
+    )
+    second_with_nulls = FoodPremises(
+        entity_id="actor:in:fssai:23624001000123",
+        legal_name="Deccan Cloud Hospitality",
+        jurisdiction_iso="IN",
+        regulatory_ids=[fssai_reg, gstin_reg],
+        provenance=[official_provenance, second_provenance],
+        premises_type="cloud_kitchen",
+        address=None,
+        postal_code=None,
+        city=None,
+        state=None,
+        lat=None,
+        lon=None,
+    )
+
+    with SQLiteStore(":memory:") as store:
+        store.initialize()
+        store.save_premises(first)
+        store.save_premises(second_with_nulls)
+
+        merged = store.get_premises_by_entity_id(first.entity_id)
+        assert merged is not None
+        assert merged.provenance == [official_provenance, second_provenance]
+        assert merged.regulatory_ids == [fssai_reg, gstin_reg]
+        assert merged.address == "Plot 12, Jubilee Hills"
+        assert merged.postal_code == "500033"
+        assert merged.city == "Hyderabad"
+        assert merged.state == "Telangana"
+        assert merged.lat == 17.4326
+        assert merged.lon == 78.4071
+        assert [p.entity_id for p in store.query_nearby_premises("500033")] == [
+            first.entity_id
+        ]
+
+        # Incoming non-null values (including 0.0) override existing values,
+        # and subsequent None preserves 0.0.
+        zero_coords = FoodPremises(
+            entity_id="actor:in:fssai:23624001000123",
+            legal_name="Deccan Cloud Hospitality",
+            jurisdiction_iso="IN",
+            regulatory_ids=[fssai_reg],
+            provenance=[second_provenance],
+            premises_type="cloud_kitchen",
+            address="Updated Address",
+            lat=0.0,
+            lon=0.0,
+        )
+        store.save_premises(zero_coords)
+        updated = store.get_premises_by_entity_id(first.entity_id)
+        assert updated is not None
+        assert updated.address == "Updated Address"
+        assert updated.lat == 0.0
+        assert updated.lon == 0.0
+        assert updated.postal_code == "500033"
+
+        store.save_premises(second_with_nulls)
+        preserved_zero = store.get_premises_by_entity_id(first.entity_id)
+        assert preserved_zero is not None
+        assert preserved_zero.lat == 0.0
+        assert preserved_zero.lon == 0.0
+
+
+def test_sqlite_store_save_ingestion_batch_merges_premises_across_adapters(
+    official_provenance: EvidenceProvenance,
+) -> None:
+    from pydantic import HttpUrl
+
+    recall_prov = EvidenceProvenance(
+        source_name="FSSAI FoSCoS Recall",
+        source_url=HttpUrl("https://foscos.fssai.gov.in/recalls"),
+        retrieved_at=datetime(2026, 4, 3, 8, 0, tzinfo=UTC),
+        content_sha256="12345678",
+        verification_tier="official_registry",
+    )
+    fssai_reg = IndiaFSSAI14(raw_value="10013022000417")
+    p_adapter1 = FoodPremises(
+        entity_id="actor:in:fssai:10013022000417",
+        legal_name="Acme Foods Pvt Ltd",
+        jurisdiction_iso="IN",
+        regulatory_ids=[fssai_reg],
+        provenance=[official_provenance],
+        premises_type="co_packer_factory",
+        postal_code="400001",
+        city="Mumbai",
+    )
+    p_adapter2 = FoodPremises(
+        entity_id="actor:in:fssai:10013022000417",
+        legal_name="Acme Foods Pvt Ltd",
+        jurisdiction_iso="IN",
+        regulatory_ids=[fssai_reg],
+        provenance=[recall_prov],
+        premises_type="co_packer_factory",
+        postal_code=None,
+        city=None,
+        state="Maharashtra",
+    )
+
+    with SQLiteStore(":memory:") as store:
+        store.initialize()
+        store.save_ingestion_batch(
+            IngestionBatch(entities=[p_adapter1], quarantined=[])
+        )
+        store.save_ingestion_batch(
+            IngestionBatch(entities=[p_adapter2], quarantined=[])
+        )
+
+        loaded = store.get_premises_by_entity_id(p_adapter1.entity_id)
+        assert loaded is not None
+        assert loaded.provenance == [official_provenance, recall_prov]
+        assert loaded.regulatory_ids == [fssai_reg]
+        assert loaded.postal_code == "400001"
+        assert loaded.city == "Mumbai"
+        assert loaded.state == "Maharashtra"
