@@ -27,9 +27,8 @@ jobs:
           node-version: "22"
           cache: "npm"
           cache-dependency-path: web/package-lock.json
+      # Enable Pages once in Settings -> Pages -> Source: GitHub Actions.
       - uses: actions/configure-pages@v5
-        with:
-          enablement: true
       - run: npm ci
       - run: npm test
       - run: npm run check

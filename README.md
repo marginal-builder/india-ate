@@ -209,8 +209,7 @@ Architecture and dependency rules: [ARCHITECTURE.md](ARCHITECTURE.md).
 
 The repository includes a GitHub Pages workflow. After pushing to GitHub:
 
-1. Open **Settings → Pages** and set **Source** to **GitHub Actions** (the
-   workflow can also enable it on first run).
+1. Open **Settings → Pages** and set **Source** to **GitHub Actions**.
 2. Push to `main`. The site is built with the repository subpath and deployed at
    `https://<owner>.github.io/<repo>/`.
 3. For a custom domain, set repository variables `SITE_URL` and `BASE_PATH`

@@ -5,8 +5,7 @@
 The `Deploy web demo to GitHub Pages` workflow builds `web/` and publishes it.
 
 1. Push the repository to GitHub.
-2. In **Settings → Pages**, set **Source** to **GitHub Actions**. The workflow
-   also requests enablement on first run.
+2. In **Settings → Pages**, set **Source** to **GitHub Actions**.
 3. Push to `main` or run the workflow manually.
 
 The default URL is:
