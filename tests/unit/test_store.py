@@ -129,6 +129,35 @@ def test_sqlite_store_crud_cluster_nearby_and_sqli_safety(
         assert store.get_premises_by_entity_id(no_fssai.entity_id) == no_fssai
 
 
+def test_sqlite_store_default_in_memory_and_nested_parent_creation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    sample_premises: FoodPremises,
+) -> None:
+    empty_cwd = tmp_path / "cwd"
+    empty_cwd.mkdir()
+    monkeypatch.chdir(empty_cwd)
+
+    with SQLiteStore() as mem_store:
+        mem_store.initialize()
+        mem_store.save_premises(sample_premises)
+        assert (
+            mem_store.get_premises_by_entity_id(sample_premises.entity_id)
+            == sample_premises
+        )
+    assert list(empty_cwd.iterdir()) == []
+
+    nested_db = tmp_path / "nested" / "sub" / "india_ate.db"
+    with SQLiteStore(nested_db) as disk_store:
+        disk_store.initialize()
+        disk_store.save_premises(sample_premises)
+    with SQLiteStore(nested_db) as reopened:
+        assert (
+            reopened.get_premises_by_entity_id(sample_premises.entity_id)
+            == sample_premises
+        )
+
+
 def test_jsonl_roundtrip_empty_and_malformed(
     tmp_path: Path,
     sample_premises: FoodPremises,
@@ -138,24 +167,31 @@ def test_jsonl_roundtrip_empty_and_malformed(
     sample_standard: ScientificStandard,
     sample_event: AuthoritativeEvent,
 ) -> None:
+    unicode_premises = sample_premises.model_copy(
+        update={"legal_name": "Masala Café — दिल्ली"}
+    )
     entities = [
-        sample_premises,
+        unicode_premises,
         sample_brand_listing,
         sample_food_item,
         sample_substance,
         sample_standard,
         sample_event,
     ]
-    out_file = tmp_path / "entities.jsonl"
+    out_file = tmp_path / "nested" / "sub" / "entities.jsonl"
     assert export_jsonl(entities, out_file) == len(entities)
-    lines = out_file.read_text(encoding="utf-8").splitlines()
+    raw_text = out_file.read_text(encoding="utf-8")
+    assert raw_text.endswith("\n")
+    assert "Masala Café — दिल्ली" in raw_text
+    assert "\\u" not in raw_text
+    lines = raw_text.splitlines()
     assert len(lines) == len(entities)
     reconstructed = import_jsonl(out_file)
     assert reconstructed == entities
 
     empty_file = tmp_path / "empty.jsonl"
     assert export_jsonl([], empty_file) == 0
-    assert empty_file.read_text(encoding="utf-8").splitlines() == []
+    assert empty_file.read_text(encoding="utf-8") == ""
     assert import_jsonl(empty_file) == []
 
     bad_json = tmp_path / "bad.jsonl"
@@ -167,7 +203,9 @@ def test_jsonl_roundtrip_empty_and_malformed(
     bad_envelope.write_text(
         '{"entity_type": "UnknownModel", "payload": {}}\n', encoding="utf-8"
     )
-    with pytest.raises(ValueError):
+    with pytest.raises(
+        ValueError, match=r"^Unknown or missing entity_type: 'UnknownModel'$"
+    ):
         import_jsonl(bad_envelope)
 
     bad_payload = tmp_path / "bad_payload.jsonl"
@@ -179,12 +217,12 @@ def test_jsonl_roundtrip_empty_and_malformed(
 
     non_dict = tmp_path / "non_dict.jsonl"
     non_dict.write_text("[1, 2, 3]\n", encoding="utf-8")
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=r"^JSONL line must decode to a JSON object$"):
         import_jsonl(non_dict)
 
     missing_payload = tmp_path / "missing_payload.jsonl"
     missing_payload.write_text('{"entity_type": "FoodItem"}\n', encoding="utf-8")
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=r"^JSONL record missing 'payload' field$"):
         import_jsonl(missing_payload)
 
 
@@ -193,7 +231,7 @@ def test_duckdb_parquet_export_and_analytics(
     official_provenance: EvidenceProvenance,
 ) -> None:
     db_path = tmp_path / "india_ate.db"
-    snap_dir = tmp_path / "snapshots"
+    snap_dir = tmp_path / "nested" / "snapshots"
     p1 = FoodPremises(
         entity_id="actor:in:fssai:23624001000123",
         legal_name="Deccan Cloud",
@@ -298,6 +336,8 @@ def test_duckdb_parquet_export_and_analytics(
             store.save_event(event)
 
     outputs = export_parquet_snapshots(db_path, snap_dir)
+    # Re-export into already existing directory to verify exist_ok=True.
+    outputs = export_parquet_snapshots(db_path, snap_dir)
     assert set(outputs.keys()) == {
         "food_premises",
         "brand_listings",
@@ -323,5 +363,14 @@ def test_duckdb_parquet_export_and_analytics(
     assert summary[("enforcement_raid_or_suspension", "Suspended")] == 2
     assert summary[("hygiene_audit", "Active")] == 1
 
-    with pytest.raises(ValueError):
+    empty_pq = write_parquet_table(
+        [],
+        [("entity_id", "VARCHAR")],
+        tmp_path / "nested_pq" / "sub" / "empty.parquet",
+    )
+    assert empty_pq.exists()
+
+    with pytest.raises(ValueError, match=r"^Invalid column definition:"):
         write_parquet_table([], [("bad col", "VARCHAR")], snap_dir / "bad.parquet")
+    with pytest.raises(ValueError, match=r"^Invalid column definition:"):
+        write_parquet_table([], [("valid_col", "INT")], snap_dir / "bad_type.parquet")
