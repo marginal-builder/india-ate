@@ -27,10 +27,18 @@ def _parse_grievance_payload(body: bytes) -> dict[str, object]:
 
 
 def _handle_grievance_post(
-    store: SQLiteStore, body: bytes
+    store: SQLiteStore, body: bytes, *, allow_persist: bool
 ) -> tuple[int, dict[str, object]]:
     try:
         payload = _parse_grievance_payload(body)
+        persist = bool(payload.get("persist", False))
+        if persist and not allow_persist:
+            return 403, {
+                "error": (
+                    "Grievance persistence is disabled; start the server with "
+                    "--allow-grievance-persist for local use."
+                )
+            }
         order_ref = payload.get("order_reference")
         packet = generate_grievance_packet(
             store=store,
@@ -39,7 +47,7 @@ def _handle_grievance_post(
             order_reference=str(order_ref) if order_ref is not None else None,
             description=str(payload["description"]),
             incident_date=date.fromisoformat(str(payload["incident_date"])),
-            persist=bool(payload.get("persist", False)),
+            persist=persist,
         )
     except (ValueError, KeyError, TypeError) as exc:
         return 400, {"error": str(exc)}
@@ -109,10 +117,14 @@ def dispatch_request(
     path: str,
     query: str = "",
     body: bytes = b"",
+    *,
+    allow_grievance_persist: bool = False,
 ) -> tuple[int, dict[str, object]]:
     """Dispatch an HTTP request to the appropriate service and return (status, json)."""
     if method == "POST" and path == "/v1/grievance":
-        return _handle_grievance_post(store, body)
+        return _handle_grievance_post(
+            store, body, allow_persist=allow_grievance_persist
+        )
     if method == "GET":
         return _dispatch_get(store, path, query)
     return 404, {"error": "Not found"}

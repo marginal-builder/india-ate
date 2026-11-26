@@ -14,5 +14,5 @@ scripts:
         pm.expect(json.fssai_id).to.eql("21226001000412");
         pm.expect(json.premises).to.be.an("object");
         pm.expect(json.ghost_brand_count).to.be.a("number");
-        pm.expect(json.events).to.be.an("array");
+        pm.expect(json.events).to.be.an("array").and.not.be.empty;
       });

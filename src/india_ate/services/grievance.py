@@ -7,6 +7,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, HttpUrl
 
 from india_ate.models import AuthoritativeEvent, EvidenceProvenance, IndiaFSSAI14
+from india_ate.services._provenance import is_official_event
 from india_ate.store import SQLiteStore
 
 FOOD_SAFETY_CONNECT_URL = "https://foscos.fssai.gov.in/consumergrievance/"
@@ -111,7 +112,15 @@ def generate_grievance_packet(
     if not clean_desc:
         raise ValueError("Grievance description must be non-empty")
     premises = store.get_premises_by_fssai_id(clean_id)
-    events = store.get_events_for_target(premises.entity_id) if premises else []
+    events = (
+        [
+            event
+            for event in store.get_events_for_target(premises.entity_id)
+            if is_official_event(event)
+        ]
+        if premises
+        else []
+    )
     seed = f"{clean_id}:{issue_category}:{incident_date.isoformat()}:{clean_desc}"
     packet_id = hashlib.sha256(seed.encode()).hexdigest()[:16]
     ticket = _maybe_persist_ticket(

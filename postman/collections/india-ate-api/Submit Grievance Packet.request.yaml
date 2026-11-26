@@ -14,7 +14,7 @@ body:
       "order_reference": "ORD-PM-1001",
       "description": "Delivered stale meal with broken seal.",
       "incident_date": "2026-11-26",
-      "persist": true
+      "persist": false
     }
 scripts:
   - type: afterResponse
@@ -23,10 +23,9 @@ scripts:
       pm.test("status is 200", function () {
         pm.response.to.have.status(200);
       });
-      pm.test("generates and persists grievance packet", function () {
+      pm.test("generates a non-persisted grievance packet", function () {
         const json = pm.response.json();
         pm.expect(json.fssai_id).to.eql("21226001000412");
-        pm.expect(json.ticket_event).to.be.an("object");
-        pm.expect(json.ticket_event.event_type).to.eql("grievance_ticket");
+        pm.expect(json.ticket_event).to.eql(null);
         pm.expect(json.escalation_deadline).to.eql("2026-12-11");
       });

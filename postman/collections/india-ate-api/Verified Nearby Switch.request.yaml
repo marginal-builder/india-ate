@@ -12,5 +12,8 @@ scripts:
       pm.test("returns verified nearby options for postal code", function () {
         const json = pm.response.json();
         pm.expect(json.postal_code).to.eql("560034");
-        pm.expect(json.options).to.be.an("array");
+        pm.expect(json.options).to.be.an("array").and.not.be.empty;
+        pm.expect(json.options[0].premises.entity_id).to.eql(
+          "actor:in:fssai:21226001000412",
+        );
       });

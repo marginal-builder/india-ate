@@ -3,6 +3,7 @@
 from pydantic import BaseModel, ConfigDict
 
 from india_ate.models import AuthoritativeEvent, FoodPremises
+from india_ate.services._provenance import is_official_event
 from india_ate.store import GhostBrandCluster, SQLiteStore
 
 _NEGATIVE_EVENT_TYPES: frozenset[str] = frozenset(
@@ -37,7 +38,11 @@ def _has_tier1_license(premises: FoodPremises) -> bool:
 def _evaluate_premises(
     store: SQLiteStore, premises: FoodPremises
 ) -> VerifiedSwitchOption | None:
-    events = store.get_events_for_target(premises.entity_id)
+    events = [
+        event
+        for event in store.get_events_for_target(premises.entity_id)
+        if is_official_event(event)
+    ]
     if any(ev.event_type in _NEGATIVE_EVENT_TYPES for ev in events):
         return None
     hygiene_events = [ev for ev in events if ev.event_type == "hygiene_audit"]

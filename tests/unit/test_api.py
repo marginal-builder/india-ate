@@ -1,5 +1,6 @@
 """Unit tests for the public REST API router and HTTP server."""
 
+import http.client
 import json
 import threading
 import urllib.error
@@ -10,7 +11,7 @@ from pathlib import Path
 from pydantic import HttpUrl
 
 from india_ate.api.router import dispatch_request
-from india_ate.api.server import create_http_server
+from india_ate.api.server import MAX_REQUEST_BODY_BYTES, create_http_server
 from india_ate.models import (
     AuthoritativeEvent,
     BrandListing,
@@ -171,6 +172,32 @@ def test_api_router_endpoints_and_error_paths() -> None:
         )
         assert status == 200
         assert body["escalation_deadline"] == "2026-04-16"
+        assert body["ticket_event"] is None
+
+        persist_payload = json.dumps(
+            {
+                "fssai_id": "13624001000999",
+                "issue_category": "spoiled_food",
+                "description": "Food arrived spoiled.",
+                "incident_date": "2026-04-01",
+                "persist": True,
+            }
+        ).encode("utf-8")
+        status, body = dispatch_request(
+            store, "POST", "/v1/grievance", body=persist_payload
+        )
+        assert status == 403
+        assert "disabled" in str(body["error"])
+
+        status, body = dispatch_request(
+            store,
+            "POST",
+            "/v1/grievance",
+            body=persist_payload,
+            allow_grievance_persist=True,
+        )
+        assert status == 200
+        assert body["ticket_event"] is not None
 
         status, _ = dispatch_request(store, "POST", "/v1/grievance", body=b"{bad")
         assert status == 400
@@ -192,7 +219,38 @@ def test_http_server_roundtrip(tmp_path: Path) -> None:
     try:
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/health") as resp:
             assert resp.status == 200
+            assert resp.headers.get("Content-Type") == "application/json; charset=utf-8"
+            assert resp.headers.get("Access-Control-Allow-Origin") == "*"
+            assert (
+                resp.headers.get("Access-Control-Allow-Methods") == "GET, POST, OPTIONS"
+            )
+            assert resp.headers.get("Access-Control-Allow-Headers") == "Content-Type"
+            assert resp.headers.get("Access-Control-Max-Age") == "600"
+            assert resp.headers.get("Cache-Control") == "no-store"
+            assert resp.headers.get("X-Content-Type-Options") == "nosniff"
             assert json.loads(resp.read())["status"] == "ok"
+
+        opt_req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/v1/grievance", method="OPTIONS"
+        )
+        with urllib.request.urlopen(opt_req) as resp:
+            assert resp.status == 204
+            assert resp.headers.get("Access-Control-Allow-Origin") == "*"
+            assert (
+                resp.headers.get("Access-Control-Allow-Methods") == "GET, POST, OPTIONS"
+            )
+            assert resp.headers.get("Access-Control-Allow-Headers") == "Content-Type"
+            assert resp.headers.get("Access-Control-Max-Age") == "600"
+            assert resp.headers.get("Content-Length") == "0"
+
+        try:
+            urllib.request.urlopen(f"http://127.0.0.1:{port}/unknown")
+            raise AssertionError("Expected HTTPError 404")
+        except urllib.error.HTTPError as err:
+            assert err.code == 404
+            assert err.headers.get("Cache-Control") == "no-store"
+            assert err.headers.get("X-Content-Type-Options") == "nosniff"
+            assert "error" in json.loads(err.read())
 
         req = urllib.request.Request(
             f"http://127.0.0.1:{port}/v1/grievance",
@@ -211,6 +269,27 @@ def test_http_server_roundtrip(tmp_path: Path) -> None:
             assert resp.status == 200
             assert json.loads(resp.read())["fssai_id"] == "13624001000999"
 
+        persist_req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/v1/grievance",
+            data=json.dumps(
+                {
+                    "fssai_id": "13624001000999",
+                    "issue_category": "misbranded",
+                    "description": "Missing FSSAI label.",
+                    "incident_date": "2026-04-01",
+                    "persist": True,
+                }
+            ).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            urllib.request.urlopen(persist_req)
+            raise AssertionError("Expected HTTPError 403")
+        except urllib.error.HTTPError as err:
+            assert err.code == 403
+            assert "disabled" in str(json.loads(err.read())["error"])
+
         bad_len_req = urllib.request.Request(
             f"http://127.0.0.1:{port}/v1/grievance",
             data=b"{}",
@@ -222,6 +301,74 @@ def test_http_server_roundtrip(tmp_path: Path) -> None:
             raise AssertionError("Expected HTTPError 400")
         except urllib.error.HTTPError as err:
             assert err.code == 400
+
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        try:
+            conn.putrequest("POST", "/v1/grievance")
+            conn.putheader("Content-Length", str(MAX_REQUEST_BODY_BYTES + 1))
+            conn.endheaders()
+            response = conn.getresponse()
+            assert response.status == 413
+            assert "error" in json.loads(response.read())
+        finally:
+            conn.close()
+
+        negative_conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        try:
+            negative_conn.putrequest("POST", "/v1/grievance")
+            negative_conn.putheader("Content-Length", "-1")
+            negative_conn.endheaders()
+            response = negative_conn.getresponse()
+            assert response.status == 400
+            assert "error" in json.loads(response.read())
+        finally:
+            negative_conn.close()
+
+        empty_conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        try:
+            empty_conn.putrequest("POST", "/v1/grievance")
+            empty_conn.putheader("Content-Length", "0")
+            empty_conn.endheaders()
+            response = empty_conn.getresponse()
+            assert response.status == 400
+            assert "error" in json.loads(response.read())
+        finally:
+            empty_conn.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_server_allows_persist_when_explicitly_enabled(tmp_path: Path) -> None:
+    db_path = tmp_path / "allowed.db"
+    with SQLiteStore(db_path) as store:
+        store.initialize()
+        _seed(store)
+
+    server = create_http_server(
+        str(db_path), host="127.0.0.1", port=0, allow_grievance_persist=True
+    )
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/v1/grievance",
+            data=json.dumps(
+                {
+                    "fssai_id": "13624001000999",
+                    "issue_category": "misbranded",
+                    "description": "Missing FSSAI label.",
+                    "incident_date": "2026-04-01",
+                    "persist": True,
+                }
+            ).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req) as resp:
+            assert resp.status == 200
+            assert json.loads(resp.read())["ticket_event"] is not None
     finally:
         server.shutdown()
         server.server_close()

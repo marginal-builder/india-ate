@@ -136,10 +136,29 @@ def grievance_command(
 @click.option("--host", type=str, default="127.0.0.1", show_default=True)
 @click.option("--port", type=int, default=8000, show_default=True)
 @click.option("--db", "db_path", type=str, default=DEFAULT_DB_PATH, show_default=True)
-def serve_command(host: str, port: int, db_path: str) -> None:
+@click.option(
+    "--allow-grievance-persist/--no-allow-grievance-persist",
+    default=False,
+    show_default=True,
+    help="Allow unauthenticated HTTP grievance writes (local demos only).",
+)
+def serve_command(
+    host: str, port: int, db_path: str, allow_grievance_persist: bool
+) -> None:
     """Start the public REST API HTTP server."""
-    server = create_http_server(db_path, host=host, port=port)
-    server.serve_forever()
+    server = create_http_server(
+        db_path,
+        host=host,
+        port=port,
+        allow_grievance_persist=allow_grievance_persist,
+    )
+    click.echo(f"Serving india-ate API on http://{host}:{port}")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
 
 
 @app.command("mcp")

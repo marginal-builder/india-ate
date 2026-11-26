@@ -11,18 +11,18 @@ body:
     {
       "fssai_id": "{{fssaiId}}",
       "issue_category": "spoiled_food",
-      "description": "Invalid string persist value.",
+      "description": "Attempted unauthenticated persistence.",
       "incident_date": "2026-11-26",
-      "persist": "false"
+      "persist": true
     }
 scripts:
   - type: afterResponse
     language: text/javascript
     code: |
-      pm.test("status is 400 on non-boolean persist", function () {
-        pm.response.to.have.status(400);
+      pm.test("status is 403 when persistence is disabled", function () {
+        pm.response.to.have.status(403);
       });
-      pm.test("returns error message", function () {
+      pm.test("returns a clear disabled-persistence message", function () {
         const json = pm.response.json();
-        pm.expect(json.error).to.include("persist");
+        pm.expect(json.error).to.include("--allow-grievance-persist");
       });

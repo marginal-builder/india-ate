@@ -92,6 +92,18 @@ def _seed_store(store: SQLiteStore) -> None:
     )
     store.save_event(
         AuthoritativeEvent(
+            event_id="evt:license:13624001000999:2026-04-01",
+            event_type="license_status_snapshot",
+            target_entity_id=p_verified.entity_id,
+            jurisdiction_iso="IN",
+            event_date=date(2026, 4, 1),
+            status="Active",
+            verbatim_summary="Official license status snapshot.",
+            provenance=prov,
+        )
+    )
+    store.save_event(
+        AuthoritativeEvent(
             event_id="evt:enf:tg_safe:13624001000888:2026-03-10",
             event_type="enforcement_raid_or_suspension",
             target_entity_id=p_suspended.entity_id,
@@ -124,6 +136,12 @@ def test_fact_receipt_and_ghost_cluster() -> None:
         cluster = get_ghost_brand_cluster(store, "23624001000123")
         assert cluster is not None
         assert len(cluster.listings) == 2
+
+        verified_receipt = build_fact_receipt(store, "13624001000999")
+        assert [event.event_type for event in verified_receipt.events] == [
+            "license_status_snapshot",
+            "hygiene_audit",
+        ]
 
 
 def test_verified_nearby_switches_excludes_suspended_and_basic() -> None:
@@ -169,3 +187,37 @@ def test_generate_grievance_packet_15_day_escalation_and_validation() -> None:
                 description="   ",
                 incident_date=date(2026, 4, 1),
             )
+
+
+def test_user_submitted_grievance_does_not_enter_official_receipt() -> None:
+    with SQLiteStore(":memory:") as store:
+        store.initialize()
+        _seed_store(store)
+
+        first = generate_grievance_packet(
+            store=store,
+            fssai_id="13624001000888",
+            issue_category="spoiled_food",
+            order_reference=None,
+            description="First user submission.",
+            incident_date=date(2026, 4, 2),
+            persist=True,
+        )
+        assert first.ticket_event is not None
+
+        second = generate_grievance_packet(
+            store=store,
+            fssai_id="13624001000888",
+            issue_category="misbranded",
+            order_reference=None,
+            description="Second user submission.",
+            incident_date=date(2026, 4, 3),
+        )
+        assert second.known_events_count == 1
+
+        receipt = build_fact_receipt(store, "13624001000888")
+        assert [event.event_type for event in receipt.events] == [
+            "enforcement_raid_or_suspension"
+        ]
+        assert receipt.last_verified_at == datetime(2026, 4, 1, 10, 0, tzinfo=UTC)
+        assert len(store.get_events_for_target("actor:in:fssai:13624001000888")) == 2

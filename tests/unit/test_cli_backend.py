@@ -137,5 +137,7 @@ def test_cli_ingest_recall_enforcement_ondc_ifct_and_queries(tmp_path: Path) -> 
     )
     assert bad_grievance.exit_code != 0
 
-    assert runner.invoke(app, ["serve", "--help"]).exit_code == 0
+    serve_help = runner.invoke(app, ["serve", "--help"])
+    assert serve_help.exit_code == 0
+    assert "--allow-grievance-persist" in serve_help.output
     assert runner.invoke(app, ["mcp", "--help"]).exit_code == 0

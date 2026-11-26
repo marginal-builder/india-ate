@@ -4,3 +4,5 @@ description: >-
   Contract and regression test suite for the india-ate HTTP API (`india-ate serve`),
   verifying offline FSSAI decoding, Fact Receipt lookups, Ghost-Brand Clusters,
   Verified Nearby Switch, IFCT nutrition search, and Food Safety Connect grievances.
+  HTTP grievance persistence is disabled by default; the suite verifies both the
+  non-persisted packet path and the 403 rejection path.

@@ -10,6 +10,7 @@ from india_ate.models import (
     FoodPremises,
     IndiaFSSAI14,
 )
+from india_ate.services._provenance import is_official_event
 from india_ate.store import SQLiteStore
 
 
@@ -56,7 +57,11 @@ def build_fact_receipt(store: SQLiteStore, fssai_id: str) -> FactReceipt:
         return _empty_receipt(clean_id, decoded)
     listings = store.get_brand_listings_for_premises(premises.entity_id)
     events = sorted(
-        store.get_events_for_target(premises.entity_id),
+        (
+            event
+            for event in store.get_events_for_target(premises.entity_id)
+            if is_official_event(event)
+        ),
         key=lambda ev: ev.event_date,
         reverse=True,
     )
