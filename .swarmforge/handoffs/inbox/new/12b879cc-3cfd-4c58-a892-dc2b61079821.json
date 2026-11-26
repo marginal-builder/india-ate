@@ -1,0 +1,24 @@
+{
+  "id": "12b879cc-3cfd-4c58-a892-dc2b61079821",
+  "from_role": "refactorer",
+  "to_role": "architect",
+  "priority": "normal",
+  "created_at": "2026-11-26T08:47:36.731527+00:00",
+  "git_commit": "78a509805857013119d44fe53d7458f5b122414a",
+  "task_summary": "Split hygiene_rating.py into _hygiene_parser.py and decompose HygieneRatingAdapter and cli.py to meet <=200 line files, <=20 line functions, DRY, and CC<=10.",
+  "files_changed": [
+    "src/india_ate/adapters/_hygiene_parser.py",
+    "src/india_ate/adapters/hygiene_rating.py",
+    "src/india_ate/cli.py"
+  ],
+  "quality_gates": {
+    "coverage_pct": 99.64,
+    "crap_max": 6.0,
+    "mutation_score_pct": 0.0,
+    "mypy": "passed",
+    "ruff": "passed",
+    "dependency_rule": "passed"
+  },
+  "notes_for_next_role": "Before/After CC & MI: hygiene_rating.py max CC 9 (B) -> <=3 (A) and MI 38.14 -> 53.69 (with _hygiene_parser.py MI 47.06, max CC <=5); cli.py max CC 7 (B) -> <=3 (A) and MI 46.89 -> 47.20. All modules <=200 lines (hygiene_rating.py 145, _hygiene_parser.py 109, cli.py 126). Repo-wide radon cc -nb shows only _normalize_and_validate (B=6); pylint duplicate-code 10.00/10; 165 passed (99.64% coverage); mypy strict and ruff check/format clean.",
+  "blockers": []
+}
