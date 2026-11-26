@@ -1,0 +1,22 @@
+{
+  "id": "cc596bd1-ac9b-469d-8e0e-8beff6963a59",
+  "from_role": "specifier",
+  "to_role": "coder",
+  "priority": "normal",
+  "created_at": "2026-11-26T08:37:30.738973+00:00",
+  "git_commit": "8d3e3443cd3efe8ec92ac543ec7c24c2bb22fb6e",
+  "task_summary": "Write deterministic Phase 2 Gherkin specification for HygieneRatingAdapter, quarantine models, SQLite batch persistence, and CLI ingest/lookup.",
+  "files_changed": [
+    "features/adapters/hygiene_rating.feature"
+  ],
+  "quality_gates": {
+    "coverage_pct": 0.0,
+    "crap_max": 0.0,
+    "mutation_score_pct": 0.0,
+    "mypy": "passed",
+    "ruff": "passed",
+    "dependency_rule": "passed"
+  },
+  "notes_for_next_role": "Validated features/adapters/hygiene_rating.feature with pytest_bdd FeatureParser (8 scenarios, all @offline). Implement src/india_ate/models/ingestion.py, src/india_ate/adapters/http.py, src/india_ate/adapters/hygiene_rating.py, SQLiteStore quarantined_records + save_ingestion_batch(), and CLI ingest hygiene / lookup commands using strict TDD.",
+  "blockers": []
+}
