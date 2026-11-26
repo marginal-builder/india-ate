@@ -1,0 +1,86 @@
+# Engineering Constitution — india-ate
+# ======================================
+# These are hard constraints. Non-negotiable. If a constraint is violated,
+# you MUST fix it before creating a handoff. No exceptions.
+
+## The Three Laws of TDD (Robert C. Martin)
+
+1. You may not write production code unless it is to make a failing unit test pass.
+2. You may not write more of a unit test than is sufficient to fail (compilation failures count).
+3. You may not write more production code than is sufficient to pass the one failing test.
+
+Red → Green → Refactor. All three phases per feature. Always.
+
+## SOLID Principles (enforced, not aspirational)
+
+**S — Single Responsibility Principle**
+- Every class has ONE reason to change.
+- If a class does two things, split it into two classes.
+- Functions do ONE thing. If you need "and" to describe what it does, split it.
+
+**O — Open/Closed Principle**
+- Base classes in `models/` are CLOSED for modification.
+- New behaviour goes into new adapters/subclasses, never into base classes.
+
+**L — Liskov Substitution Principle**
+- Any Premises subtype must be usable wherever Premises is expected.
+- Never raise unexpected exceptions or return unexpected types from overrides.
+
+**I — Interface Segregation Principle**
+- `BaseSourceAdapter` defines the minimum interface only: `fetch()` and `validate()`.
+- Do not add methods to base classes that only some implementors will use.
+
+**D — Dependency Inversion Principle**
+- Business logic (models, use cases) depends on ABSTRACTIONS (BaseSourceAdapter).
+- Never import concrete crawlers, DB drivers, or CLI frameworks into `models/`.
+
+## Clean Architecture (dependency rule: inward only)
+
+```
+[CLI / Frameworks / DB]  →  [Store / Adapters]  →  [Use Cases]  →  [Entities / Models]
+       outer                     interface              application          core
+```
+
+NEVER import from an outer ring into an inner ring.
+`models/` must have ZERO imports from `store/`, `adapters/`, `cli.py`, or any framework.
+Verify with: `grep -r "from india_ate.store" src/india_ate/models/` → must return nothing.
+
+## Quality Gates (all must pass before any handoff)
+
+| Gate               | Threshold      | Command                                                        |
+|--------------------|---------------|----------------------------------------------------------------|
+| Test coverage      | ≥ 95%          | `uv run pytest --cov=india_ate --cov-fail-under=95`           |
+| Mutation score     | ≥ 80%          | `uv run mutmut run && uv run mutmut results`                  |
+| Cyclomatic CC      | ≤ 10 per fn   | `uv run radon cc src/ -a -nb` (all results must be A or B)   |
+| CRAP score         | ≤ 30 per fn   | `uv run radon cc src/ --show-complexity --average`            |
+| mypy strict        | zero errors    | `uv run mypy src/`                                             |
+| ruff               | zero violations| `uv run ruff check src/ tests/`                               |
+| ruff format        | no diffs       | `uv run ruff format --check src/ tests/`                      |
+| Dependency rule    | no violations  | `grep -r "from india_ate.store" src/india_ate/models/`        |
+
+CRAP formula: cc(m)² × (1 − cov(m))³ + cc(m)
+
+## Code Style Rules
+
+- Max function length: 20 lines. If longer, refactor.
+- Max file length: 200 lines. If longer, split the module.
+- No magic numbers. Use named constants or Enum values.
+- No bare `except:`. Always catch specific exceptions.
+- No `print()` in production code. Use `logfire` for observability.
+- All `Optional[X]` written as `X | None` (Python 3.12 union syntax).
+- Pydantic models use `model_config = ConfigDict(strict=True, frozen=True)`.
+
+## Data Integrity Rules (domain-specific, non-negotiable)
+
+- NEVER generate, infer, or hallucinate FSSAI IDs, legal names, or regulatory statuses.
+- ALL entity field values must trace to a source URL + content_sha256 hash.
+- Ambiguous or unverifiable data goes into a quarantine field, NOT into live entity fields.
+- LLMs are PROHIBITED from modifying EvidenceProvenance records.
+
+## Commit Rules
+
+- One logical change per commit.
+- Imperative commit messages, ≤ 72 chars: "Add IndiaFSSAI14 offline decoder"
+- Tests MUST pass before any commit: `uv run pytest -q` before `git commit`.
+- Never commit `# TODO` or `# FIXME` without a linked issue number.
+- Never commit secrets, API keys, or hardcoded file paths.

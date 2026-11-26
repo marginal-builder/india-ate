@@ -1,0 +1,66 @@
+# Workflow Constitution — india-ate
+# ===================================
+# How work flows through the six-pack pipeline.
+
+## Pipeline Stages
+
+```
+Specifier → Coder → Refactorer → Architect → Hardener → QA
+```
+
+Each stage is a hard gate. Work does NOT advance until the stage is COMPLETE.
+
+## Stage Definitions
+
+### Stage 1: Specifier
+- INPUT: Blueprint (`open_food_trust_unified_scope_and_oop_blueprint.md`) + domain.prompt
+- OUTPUT: Gherkin `.feature` files in `features/`
+- PRODUCES: Behavioural specifications for ALL 5 entity classes + FSSAI14 decoder
+- MUST NOT: Write any Python code
+
+### Stage 2: Coder
+- INPUT: Specifier's handoff + `.feature` files
+- OUTPUT: `src/india_ate/**` (all models, store, adapters ABC, cli) + `tests/unit/**`
+- PRODUCES: All tests green, coverage ≥ 95%
+- MUST NOT: Refactor, only implement to make tests pass
+
+### Stage 3: Refactorer
+- INPUT: Coder's handoff + passing test suite
+- OUTPUT: Same files, improved — DRY, CC ≤ 10, CRAP ≤ 30
+- PRODUCES: `radon cc` all A/B, zero duplicate-code violations
+- MUST NOT: Add new features, change public interfaces, break tests
+
+### Stage 4: Architect
+- INPUT: Refactorer's handoff
+- OUTPUT: `ARCHITECTURE.md` + any boundary fixes in source
+- PRODUCES: Zero outer-layer imports into `models/`, dependency diagram
+- MUST NOT: Change business logic, only fix architectural violations
+
+### Stage 5: Hardener
+- INPUT: Architect's handoff
+- OUTPUT: Hardened test suite + security scan results
+- PRODUCES: mutmut score ≥ 80%, zero SQL injection vectors, no secrets in code
+- MUST NOT: Add features, only strengthen existing tests
+
+### Stage 6: QA
+- INPUT: Hardener's handoff
+- OUTPUT: Acceptance test results + `QUALITY_REPORT.md`
+- PRODUCES: All BDD `.feature` files run green via pytest-bdd
+- TERMINAL STAGE: Writes to `completed/`, not `outbox/`
+
+## Reversal Protocol
+
+If a stage finds it CANNOT proceed (broken tests, unsatisfiable constraint), it:
+1. Writes a `failed/` handoff JSON with exact reason and failing command output
+2. The PREVIOUS stage picks up the failed handoff and fixes it
+3. Re-handoffs to the failing stage
+
+## Parallelism Rule
+
+Stages run SEQUENTIALLY. No two stages work simultaneously on the same module.
+(Parallelism may be used WITHIN a stage — e.g., Coder implements models/ and store/ concurrently — but the stage does not hand off until all its work is complete.)
+
+## Work Sizing
+
+Each stage should produce ≤ 5 commits. If a stage needs more, it is doing too much.
+Break the stage's task into smaller increments and commit after each green test.

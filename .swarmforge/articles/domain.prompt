@@ -1,0 +1,122 @@
+# Domain Knowledge — india-ate
+# ==============================
+# Read this to understand WHAT you are building and WHY.
+# Grounded in: ../open_food_trust_unified_scope_and_oop_blueprint.md
+#              ../fssai/5a968698b3ceb13.pdf (FSSAI Circular No. 123-Dir(Enf.)/FSSAI/2011)
+
+## Project Mission
+
+Build **India's canonical open-source Food & Nutrition Premises Entity Graph** at ₹0 capital.
+Anchored strictly on authoritative public records and peer-reviewed science.
+Keyed in India by the universal 14-digit FSSAI license number.
+Globally expandable via polymorphic jurisdiction IDs.
+
+Modelled on: OpenSanctions/FollowTheMoney (entity graph) + Yelp LIVES (open inspection standard).
+
+## Why This Matters (The Structural Gap)
+
+Every existing Indian consumer food tool indexes by **brand name or barcode**.
+That abstraction breaks down because:
+
+1. Effective April 1, 2026, FSSAI Basic Registration covers up to ₹1.5 Cr turnover with
+   no pre-inspection and perpetual validity — a single FSSAI ID can operate multiple Swiggy/Zomato ghost brands.
+2. 5,625+ quick-commerce dark stores exist with FSSAI IDs buried on receipts/invoices.
+3. FSSAI ran 3,97,009 inspections in FY25-26 — almost none visible to consumers.
+4. Only 8,824 eateries have completed Hygiene Ratings nationally.
+
+## FSSAI 14-Digit License Number (Offline Decode — Per Circular 5a968698b3ceb13.pdf)
+
+```text
+Position  Length  Field
+1         1       Type: 1=License (State/Central), 2=Registration (Basic / Petty FBO)
+2-3       2       State/UT code (00=Central Authority; 01-37=State/UT)
+4-5       2       Year of issue/business start (2-digit, e.g. 13=2013, 24=2024)
+6-8       3       Designated Officer (DO) / Registering Officer (RO) code
+9-14      6       Unique 6-digit serial number under that DO/RO
+```
+
+Official State/UT Codes (per FSSAI Circular 19 July 2011 + post-2011 additions 36, 37):
+- `00`: Central
+- `01`: Andhra Pradesh, `02`: Arunachal Pradesh, `03`: Assam, `04`: Bihar, `05`: Chhattisgarh,
+- `06`: Goa, `07`: Gujarat, `08`: Haryana, `09`: Himachal Pradesh, `10`: Jammu & Kashmir,
+- `11`: Jharkhand, `12`: Karnataka, `13`: Kerala, `14`: Madhya Pradesh, `15`: Maharashtra,
+- `16`: Manipur, `17`: Meghalaya, `18`: Mizoram, `19`: Nagaland, `20`: Odisha,
+- `21`: Punjab, `22`: Rajasthan, `23`: Sikkim, `24`: Tamil Nadu, `25`: Tripura,
+- `26`: Uttarakhand, `27`: Uttar Pradesh, `28`: West Bengal, `29`: Andaman & Nicobar Islands,
+- `30`: Chandigarh, `31`: Dadra & Nagar Haveli, `32`: Daman & Diu, `33`: Delhi,
+- `34`: Lakshadweep, `35`: Puducherry, `36`: Telangana, `37`: Ladakh
+
+Central Regional Office DO Codes (when state_code == "00"):
+- RO Mumbai: `021`=Gujarat, `022`=Maharashtra, `023`=Dadra & Nagar Haveli, `024`=Daman & Diu, `025`=Goa, `026`=Madhya Pradesh
+- RO Kolkata: `031`=West Bengal, `032`=Odisha, `033`=Bihar, `034`=Jharkhand, `035`=Sikkim, `036`=A & N Islands, `037`=Chhattisgarh
+- RO Chennai: `041`=Kerala, `042`=Tamil Nadu, `043`=Karnataka, `044`=Andhra Pradesh, `045`=Puducherry, `046`=Lakshadweep
+- RO Guwahati: `071`=Assam, `072`=Arunachal Pradesh, `073`=Tripura, `074`=Manipur, `075`=Mizoram, `076`=Meghalaya, `077`=Nagaland
+
+Example: `10013022000417`
+→ tier: `"license"` (digit 1 = `1`, pre_inspection_exempt_post_apr2026 = `false`)
+→ authority_scope: `"central"` (`00`)
+→ state_code: `"00"`, state_name: `"Central"`
+→ registration_year: `2013` (`13` -> `2000 + 13`)
+→ officer_code: `"022"` (Central DO Maharashtra / RO Mumbai)
+→ serial: `"000417"`
+
+Official circular examples:
+- `10411012000075` → License, Bihar (`04`), Year `2011`, DO `012`, Serial `000075`
+- `22711126011608` → Basic Registration, Uttar Pradesh (`27`), Year `2011`, RO `126`, Serial `011608`
+- `10011034002374` → License, Central (`00`), Year `2011`, DO `034` (Jharkhand / RO Kolkata), Serial `002374`
+
+## Five Canonical Entity Layers (Pydantic v2, country-agnostic)
+
+Aligned with `../open_food_trust_unified_scope_and_oop_blueprint.md`:
+
+### 1. Food Actors (`FoodActor`, `FoodPremises`, `BrandListing`)
+- `FoodActor`: `entity_id`, `legal_name`, `jurisdiction_iso`, `regulatory_ids`, `provenance`
+- `FoodPremises(FoodActor)`: `premises_type` (`cloud_kitchen`, `dark_store`, `restaurant`, `co_packer_factory`, `dairy_unit`, `warehouse`, `retail_vendor`), `address`, `postal_code`, `city`, `state`, `lat`, `lon`
+- `BrandListing`: maps consumer-facing storefront names N:1 to physical `FoodPremises` (`listing_id`, `display_name`, `platform`, `premises_entity_id`, `postal_code`, `first_seen_at`, `last_seen_at`, `provenance`) — exposes ghost-brand clusters.
+
+### 2. Food Items (`FoodItem`)
+Products, SKUs, dishes, unbranded staples.
+`item_id`, `canonical_name`, `item_kind` (`raw_staple`, `packaged_product`, `menu_dish`, `supplement`), `foodon_uri`, `ifct_code`, `gtin_barcode`, `manufacturer_premises_ids`, `marketer_actor_ids`
+
+### 3. Substances (`Substance`)
+CAS-keyed chemicals, nutrients, additives, contaminants, allergens.
+`substance_id`, `canonical_name`, `substance_class` (`nutrient`, `additive`, `pesticide_residue`, `heavy_metal`, `mycotoxin`, `microbe`, `allergen`), `cas_number`, `pubchem_cid`, `ins_e_number`
+
+### 4. Scientific Standards (`ScientificStandard`)
+Peer-reviewed toxicology limits, statutory MRLs, nutrient composition, dietary guidelines.
+`standard_id`, `standard_type`, `jurisdiction_iso`, `substance_id`, `food_item_id`, `value`, `unit`, `effective_date`, `provenance`
+
+### 5. Authoritative Events (`AuthoritativeEvent`)
+Raids, recalls, suspensions, hygiene audits, lab tests, grievances.
+`event_id`, `event_type`, `target_entity_id`, `jurisdiction_iso`, `event_date`, `status`, `batch_or_lot_no`, `verbatim_summary`, `provenance`
+
+## Cross-Cutting Models & Adapters
+
+- `EvidenceProvenance`: `source_name`, `source_url`, `retrieved_at`, `content_sha256`, `verification_tier` (`official_registry`, `peer_reviewed_science`, `user_verified_snapshot`)
+- `RegulatoryIdentifier` (base, polymorphic): `jurisdiction_iso`, `scheme`, `raw_value`, `decode_offline()`
+- `IndiaFSSAI14(RegulatoryIdentifier)`: concrete deterministic offline decoder
+- `BaseSourceAdapter(ABC)`: `fetch() -> bytes`, `parse(raw: bytes) -> list[dict[str, Any]]`, `validate_and_emit(records: list[dict[str, Any]]) -> list[BaseModel]`
+
+## Persistence Stack
+
+| Layer     | Technology       | Purpose                                     |
+|-----------|------------------|---------------------------------------------|
+| Runtime   | SQLite (raw)     | Fast lookups, writes, ghost-brand joins     |
+| Open Data | JSONL            | Git-versioned dataset (line-delimited JSON) |
+| Analytics | DuckDB + Parquet | Analytical queries, bulk Parquet snapshots  |
+
+## Zero Hallucination Rule (Absolute)
+
+LLMs operating on this codebase MUST NOT:
+- Generate FSSAI license numbers
+- Infer or fabricate legal entity names
+- Create or modify enforcement statuses
+- Produce or alter toxicology/nutrition values
+
+All entity field values must trace to a real `EvidenceProvenance` record with a
+real `source_url` and a real `content_sha256`. Unverifiable data goes into quarantine,
+never into live entity fields.
+
+## Phase 1 Deliverable Definition
+
+"Done" = `uv run india-ate decode 10013022000417` returns structured JSON (with zero network calls, 100% offline), all 5 entity layers + `BaseSourceAdapter` + SQLite/JSONL/DuckDB store are implemented and pass all quality gates.

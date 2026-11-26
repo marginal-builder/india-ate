@@ -1,0 +1,70 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "india-ate"
+version = "0.1.0"
+description = "India's canonical open-source Food & Nutrition Premises Entity Graph"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "duckdb>=1.1",
+    "logfire>=2.0",
+    "click>=8.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-cov>=6.0",
+    "pytest-bdd>=7.3",
+    "mutmut>=2.5",
+    "mypy>=1.13",
+    "ruff>=0.8",
+    "radon>=6.0",
+    "pylint>=3.3",
+    "pre-commit>=4.0",
+    "sqlmodel>=0.0.22",
+]
+
+[project.scripts]
+india-ate = "india_ate.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/india_ate"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "C90", "S", "ANN"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S", "ANN"]
+
+[tool.mypy]
+strict = true
+python_version = "3.12"
+plugins = ["pydantic.mypy"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=india_ate --cov-report=term-missing --cov-fail-under=95"
+
+[tool.coverage.run]
+source = ["src/india_ate"]
+omit = ["tests/*"]
+
+[tool.mutmut]
+source_paths = ["src/india_ate"]
+pytest_add_cli_args = ["--no-cov", "tests/unit/"]
+mutate_only_covered_lines = true
+
+[tool.radon]
+cc_min = "A"
+average = true

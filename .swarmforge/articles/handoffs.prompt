@@ -1,0 +1,71 @@
+# Handoff Protocol — india-ate SwarmForge
+# ==========================================
+# How roles communicate. The handoff file IS the contract between stages.
+
+## When to Handoff
+
+Hand off ONLY when:
+1. All quality gates in engineering.prompt PASS
+2. `git status` is clean (all changes committed)
+3. `uv run pytest` exits 0
+
+Never hand off broken work. A failing test is not a "note for the next stage".
+
+## Handoff File Format
+
+Create a JSON file at: `.swarmforge/handoffs/inbox/new/<uuid>.json`
+
+Generate a UUID with: `python3 -c "import uuid; print(uuid.uuid4())"`
+
+```json
+{
+  "id": "<uuid4>",
+  "from_role": "<your role: specifier|coder|refactorer|architect|hardener|qa>",
+  "to_role": "<next role>",
+  "priority": "normal",
+  "created_at": "<ISO 8601 datetime>",
+  "git_commit": "<output of: git rev-parse HEAD>",
+  "task_summary": "One sentence: what did you complete?",
+  "files_changed": ["list", "of", "files", "you", "modified"],
+  "quality_gates": {
+    "coverage_pct": 0.0,
+    "crap_max": 0.0,
+    "mutation_score_pct": 0.0,
+    "mypy": "passed|failed",
+    "ruff": "passed|failed",
+    "dependency_rule": "passed|failed"
+  },
+  "notes_for_next_role": "Any context, caveats, or known issues the next role should know",
+  "blockers": []
+}
+```
+
+## Handoff Types
+
+**Forward handoff** (normal, stage N → stage N+1):
+- Write JSON to `.swarmforge/handoffs/inbox/new/<uuid>.json`
+- Move it to `in_process/` when the next role picks it up
+
+**Reverse handoff** (failure, stage N → stage N-1):
+- Write JSON to `.swarmforge/handoffs/failed/<uuid>.json`
+- Set `"to_role"` to the PREVIOUS role
+- Include exact failing command + stdout in `"notes_for_next_role"`
+
+**Terminal handoff** (QA only):
+- Write JSON to `.swarmforge/handoffs/completed/<uuid>.json`
+- This signals that Phase 1 is DONE
+
+## Picking Up a Handoff
+
+1. `ls .swarmforge/handoffs/inbox/new/` — find your work
+2. `cat .swarmforge/handoffs/inbox/new/<uuid>.json` — read it
+3. Move to in_process: `mv .swarmforge/handoffs/inbox/new/<uuid>.json .swarmforge/handoffs/inbox/in_process/`
+4. `git log --oneline -5` — verify the commit SHA in the handoff matches HEAD or is in history
+5. Begin work
+
+## Rules
+
+- NEVER reach into another role's inbox
+- NEVER use handoff files as chat — keep `notes_for_next_role` factual and brief
+- NEVER hand off with failing tests, even with a note saying "tests are failing but..."
+- One handoff per completed stage. Do not send partial handoffs.
