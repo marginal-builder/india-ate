@@ -10,6 +10,17 @@ TIER_BASIC_REG_DIGIT = "2"
 CENTRAL_STATE_CODE = "00"
 YEAR_CENTURY_BASE = 2000
 
+_TIER_INDEX = 0
+_STATE_SLICE = slice(1, 3)
+_YEAR_SLICE = slice(3, 5)
+_OFFICER_SLICE = slice(5, 8)
+_SERIAL_SLICE = slice(8, 14)
+
+_TIER_LABELS: dict[str, str] = {
+    TIER_LICENSE_DIGIT: "license",
+    TIER_BASIC_REG_DIGIT: "basic_registration",
+}
+
 STATE_UT_CODES: dict[str, str] = {
     "00": "Central",
     "01": "Andhra Pradesh",
@@ -86,11 +97,25 @@ def _normalize_and_validate(raw_value: str) -> str:
     cleaned = raw_value.strip()
     if len(cleaned) != FSSAI_LENGTH or not cleaned.isdigit():
         raise ValueError("FSSAI ID must be a 14-digit numeric string")
-    if cleaned[0] not in (TIER_LICENSE_DIGIT, TIER_BASIC_REG_DIGIT):
-        raise ValueError(f"Invalid FSSAI license tier digit: {cleaned[0]!r}")
-    if cleaned[1:3] not in STATE_UT_CODES:
-        raise ValueError(f"Unknown FSSAI state or UT code: {cleaned[1:3]!r}")
+    tier_digit = cleaned[_TIER_INDEX]
+    if tier_digit not in _TIER_LABELS:
+        raise ValueError(f"Invalid FSSAI license tier digit: {tier_digit!r}")
+    state_code = cleaned[_STATE_SLICE]
+    if state_code not in STATE_UT_CODES:
+        raise ValueError(f"Unknown FSSAI state or UT code: {state_code!r}")
     return cleaned
+
+
+def _resolve_central_ro(
+    state_code: str, officer_code: str
+) -> tuple[str | None, str | None]:
+    if state_code != CENTRAL_STATE_CODE:
+        return None, None
+    return CENTRAL_RO_DO_CODES.get(officer_code, (None, None))
+
+
+def _authority_scope(state_code: str) -> str:
+    return "central" if state_code == CENTRAL_STATE_CODE else "state_or_ut"
 
 
 class IndiaFSSAI14(RegulatoryIdentifier):
@@ -102,27 +127,19 @@ class IndiaFSSAI14(RegulatoryIdentifier):
     def decode_offline(self) -> dict[str, Any]:
         """Decode the 14-digit FSSAI identifier into structured metadata."""
         cleaned = _normalize_and_validate(self.raw_value)
-        tier_digit = cleaned[0]
-        state_code = cleaned[1:3]
-        officer_code = cleaned[5:8]
-        ro_info = (
-            CENTRAL_RO_DO_CODES.get(officer_code)
-            if state_code == CENTRAL_STATE_CODE
-            else None
-        )
+        tier_digit = cleaned[_TIER_INDEX]
+        state_code = cleaned[_STATE_SLICE]
+        officer_code = cleaned[_OFFICER_SLICE]
+        central_ro, ro_state = _resolve_central_ro(state_code, officer_code)
         return {
-            "tier": (
-                "license" if tier_digit == TIER_LICENSE_DIGIT else "basic_registration"
-            ),
+            "tier": _TIER_LABELS[tier_digit],
             "pre_inspection_exempt_post_apr2026": tier_digit == TIER_BASIC_REG_DIGIT,
-            "authority_scope": (
-                "central" if state_code == CENTRAL_STATE_CODE else "state_or_ut"
-            ),
+            "authority_scope": _authority_scope(state_code),
             "state_code": state_code,
             "state_name": STATE_UT_CODES[state_code],
-            "registration_year": YEAR_CENTURY_BASE + int(cleaned[3:5]),
+            "registration_year": YEAR_CENTURY_BASE + int(cleaned[_YEAR_SLICE]),
             "officer_code": officer_code,
-            "central_regional_office": ro_info[0] if ro_info is not None else None,
-            "officer_jurisdiction_state": ro_info[1] if ro_info is not None else None,
-            "serial": cleaned[8:14],
+            "central_regional_office": central_ro,
+            "officer_jurisdiction_state": ro_state,
+            "serial": cleaned[_SERIAL_SLICE],
         }

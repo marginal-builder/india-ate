@@ -40,6 +40,18 @@ class RegulatoryIdentifier(BaseModel):
     scheme: str
     raw_value: str
 
+    @classmethod
+    def _find_subclass_for_scheme(cls, scheme: object) -> type[Self] | None:
+        return next(
+            (
+                sub
+                for sub in cls.__subclasses__()
+                if (field := sub.model_fields.get("scheme")) is not None
+                and field.default == scheme
+            ),
+            None,
+        )
+
     @model_validator(mode="wrap")
     @classmethod
     def _dispatch_subclass_from_json(
@@ -54,11 +66,9 @@ class RegulatoryIdentifier(BaseModel):
             and info.mode == "json"
             and isinstance(value, dict)
         ):
-            scheme = value.get("scheme")
-            for sub in cls.__subclasses__():
-                scheme_field = sub.model_fields.get("scheme")
-                if scheme_field is not None and scheme_field.default == scheme:
-                    return sub.model_validate(value)
+            sub = cls._find_subclass_for_scheme(value.get("scheme"))
+            if sub is not None:
+                return sub.model_validate(value)
         return handler(value)
 
     def decode_offline(self) -> dict[str, Any]:
