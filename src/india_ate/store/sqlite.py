@@ -12,9 +12,9 @@ from india_ate.models import (
     FoodPremises,
     IngestionBatch,
     QuarantinedRecord,
-    RegulatoryIdentifier,
 )
 from india_ate.store._dispatch import entity_insert_spec
+from india_ate.store._merge import merge_premises
 from india_ate.store._params import (
     brand_listing_params,
     event_params,
@@ -29,51 +29,6 @@ from india_ate.store._schema import (
     SCHEMA_SQL,
 )
 from india_ate.store._science import ScienceStoreMixin
-
-_OPTIONAL_PREMISES_FIELDS = (
-    "address",
-    "postal_code",
-    "city",
-    "state",
-    "lat",
-    "lon",
-)
-
-
-def _dedup_merge[T](existing: list[T], incoming: list[T]) -> list[T]:
-    merged = list(existing)
-    for item in incoming:
-        if item not in merged:
-            merged.append(item)
-    return merged
-
-
-def _dedup_regulatory_ids(
-    existing: list[RegulatoryIdentifier], incoming: list[RegulatoryIdentifier]
-) -> list[RegulatoryIdentifier]:
-    merged: list[RegulatoryIdentifier] = []
-    seen: set[tuple[str, str, str]] = set()
-    for reg in (*existing, *incoming):
-        key = (reg.jurisdiction_iso, reg.scheme, reg.raw_value.strip())
-        if key not in seen:
-            seen.add(key)
-            merged.append(reg)
-    return merged
-
-
-def _merge_premises(existing: FoodPremises, incoming: FoodPremises) -> FoodPremises:
-    updates: dict[str, object] = {
-        "provenance": _dedup_merge(existing.provenance, incoming.provenance),
-        "regulatory_ids": _dedup_regulatory_ids(
-            existing.regulatory_ids, incoming.regulatory_ids
-        ),
-    }
-    for field in _OPTIONAL_PREMISES_FIELDS:
-        if getattr(incoming, field) is None:
-            existing_val = getattr(existing, field)
-            if existing_val is not None:
-                updates[field] = existing_val
-    return incoming.model_copy(update=updates)
 
 
 class GhostBrandCluster(BaseModel):
@@ -128,7 +83,7 @@ class SQLiteStore(ScienceStoreMixin):
     def _upsert_premises(self, premises: FoodPremises) -> None:
         existing = self.get_premises_by_entity_id(premises.entity_id)
         merged = (
-            _merge_premises(existing, premises) if existing is not None else premises
+            merge_premises(existing, premises) if existing is not None else premises
         )
         self._conn.execute(INSERT_PREMISES_SQL, premises_params(merged))
 
